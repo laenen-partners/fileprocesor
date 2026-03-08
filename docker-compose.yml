@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fileprocessor
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  clamav:
+    image: clamav/clamav:stable
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+    healthcheck:
+      test: [ "CMD", "./check.sh" ]
+      interval: 60s
+      retries: 3
+      start_period: 120s
+    volumes:
+      - clamav-data:/var/lib/clamav
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    ports:
+      - "3100:3000"
+    restart: unless-stopped
+
+  docling:
+    image: quay.io/docling-project/docling-serve-cpu
+    ports:
+      - "5001:5001"
+    environment:
+      DOCLING_SERVE_MAX_SYNC_WAIT: 600
+    restart: unless-stopped
+
+  pdf2img:
+    image: joanfabregat/pdf2img
+    ports:
+      - "3101:3000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  clamav-data:
