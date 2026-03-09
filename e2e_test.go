@@ -408,6 +408,11 @@ func TestE2E_ProcessWorkflow(t *testing.T) {
 	fpClient, objClient, ts := startE2E(t)
 	ctx := context.Background()
 
+	// Process requires ENTITY_STORE_URL for job tracking.
+	if os.Getenv("ENTITY_STORE_URL") == "" {
+		t.Skip("skipping: ENTITY_STORE_URL not set (Process requires job tracking)")
+	}
+
 	// Upload a text file.
 	uploadTestFile(t, objClient, ts, "workflow-doc.txt", "text/plain", []byte("Workflow end-to-end test"))
 
@@ -441,12 +446,35 @@ func TestE2E_ProcessWorkflow(t *testing.T) {
 		t.Fatalf("Process: %v", err)
 	}
 
+	if resp.Msg.JobId == "" {
+		t.Error("Process.JobId is empty")
+	}
 	if resp.Msg.WorkflowId == "" {
 		t.Error("Process.WorkflowId is empty")
 	}
 
-	// Check convert result.
-	convertResult, ok := resp.Msg.Results["convert"]
+	// Poll GetJob until the workflow completes.
+	var jobResp *connect.Response[fpv1.GetJobResponse]
+	for i := 0; i < 60; i++ {
+		jobResp, err = fpClient.GetJob(ctx, connect.NewRequest(&fpv1.GetJobRequest{
+			JobId: resp.Msg.JobId,
+		}))
+		if err != nil {
+			t.Fatalf("GetJob: %v", err)
+		}
+		if jobResp.Msg.Status == fpv1.JobStatus_JOB_STATUS_COMPLETED ||
+			jobResp.Msg.Status == fpv1.JobStatus_JOB_STATUS_FAILED {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
+	if jobResp.Msg.Status != fpv1.JobStatus_JOB_STATUS_COMPLETED {
+		t.Fatalf("job status = %v, want COMPLETED (error: %s)", jobResp.Msg.Status, jobResp.Msg.Error)
+	}
+
+	// Check operation results from job.
+	convertResult, ok := jobResp.Msg.Results["convert"]
 	if !ok {
 		t.Fatal("missing 'convert' result")
 	}
@@ -454,8 +482,7 @@ func TestE2E_ProcessWorkflow(t *testing.T) {
 		t.Errorf("convert failed: %s", convertResult.Error)
 	}
 
-	// Check thumbnail result.
-	thumbResult, ok := resp.Msg.Results["thumb"]
+	thumbResult, ok := jobResp.Msg.Results["thumb"]
 	if !ok {
 		t.Fatal("missing 'thumb' result")
 	}

@@ -67,8 +67,8 @@ Since the initial review, **all P0 and P1 items have been resolved**. This inclu
 
 | # | Issue | Impact | Details | Status |
 |---|---|---|---|---|
-| 1 | **No `GetWorkflowStatus` RPC** | Usability | `Process` RPC blocks until the entire workflow completes. For large files (100+ pages, multiple operations), this can take minutes. The `workflow_id` is returned but there's no way to poll status. | |
-| 2 | **No progress streaming to RPC client** | Usability | For multi-operation pipelines, callers have no visibility into which step is executing. A streaming response or status-polling RPC would improve UX significantly. | |
+| 1 | **No `GetWorkflowStatus` RPC** | Usability | `Process` RPC blocks until the entire workflow completes. For large files (100+ pages, multiple operations), this can take minutes. The `workflow_id` is returned but there's no way to poll status. | DONE (GetJob RPC) |
+| 2 | **No progress streaming to RPC client** | Usability | For multi-operation pipelines, callers have no visibility into which step is executing. A streaming response or status-polling RPC would improve UX significantly. | DONE (poll GetJob) |
 | 3 | **No content-type validation** | Reliability | `ConvertToPDF` accepts any `content_type` without validation. Gotenberg will fail with a cryptic error. The RPC should validate early and return a clear error. | DONE |
 | 4 | **`ScanDetail.VirusName` is misnamed** | Clarity | Field is populated with the general `Detail` string from ClamAV, which may contain error messages, not just virus names. Field naming is misleading. | DONE |
 | 5 | **Deprecated `result` field on `GenerateThumbnailResponse`** | Clarity | Both `result` and `results` are populated. The singular field should be removed or deprecated in proto to avoid confusion. | DONE |
@@ -150,8 +150,8 @@ Since the initial review, **all P0 and P1 items have been resolved**. This inclu
 | **P1** | Tighten ClamAV response parsing — strict protocol format matching instead of `HasSuffix "OK"` | CISO | Small | DONE |
 | **P1** | Add audit logging of file access in workflow steps | CISO | Medium | DONE |
 | **P1** | Add `.gitignore` for `.env`, `*.key`, `*.pem`, `bin/`, `.data/` | CISO | Small | DONE |
-| **P2** | Add `GetWorkflowStatus` RPC for async workflow polling | CPO | Medium | |
-| **P2** | Add progress streaming to RPC client | CPO | Medium | |
+| **P2** | Add `GetWorkflowStatus` RPC for async workflow polling | CPO | Medium | DONE (GetJob RPC) |
+| **P2** | Add progress streaming to RPC client | CPO | Medium | DONE (poll GetJob) |
 | **P2** | Add batch processing RPC for multi-document workflows | CPO | Large | |
 | **P2** | Improve Tiltfile with Go live reload | CTO | Small | |
 

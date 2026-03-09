@@ -36,6 +36,15 @@ const (
 	// FileProcessorServiceProcessProcedure is the fully-qualified name of the FileProcessorService's
 	// Process RPC.
 	FileProcessorServiceProcessProcedure = "/fileprocessor.v1.FileProcessorService/Process"
+	// FileProcessorServiceGetJobProcedure is the fully-qualified name of the FileProcessorService's
+	// GetJob RPC.
+	FileProcessorServiceGetJobProcedure = "/fileprocessor.v1.FileProcessorService/GetJob"
+	// FileProcessorServiceListJobsProcedure is the fully-qualified name of the FileProcessorService's
+	// ListJobs RPC.
+	FileProcessorServiceListJobsProcedure = "/fileprocessor.v1.FileProcessorService/ListJobs"
+	// FileProcessorServiceCancelJobProcedure is the fully-qualified name of the FileProcessorService's
+	// CancelJob RPC.
+	FileProcessorServiceCancelJobProcedure = "/fileprocessor.v1.FileProcessorService/CancelJob"
 	// FileProcessorServiceScanFileProcedure is the fully-qualified name of the FileProcessorService's
 	// ScanFile RPC.
 	FileProcessorServiceScanFileProcedure = "/fileprocessor.v1.FileProcessorService/ScanFile"
@@ -55,7 +64,17 @@ const (
 
 // FileProcessorServiceClient is a client for the fileprocessor.v1.FileProcessorService service.
 type FileProcessorServiceClient interface {
+	// Process submits a multi-step file processing pipeline. Returns immediately
+	// with a job_id; poll GetJob to track progress and retrieve results.
 	Process(context.Context, *connect.Request[v1.ProcessRequest]) (*connect.Response[v1.ProcessResponse], error)
+	// GetJob returns the current state of a processing job including status,
+	// progress, and results (once completed).
+	GetJob(context.Context, *connect.Request[v1.GetJobRequest]) (*connect.Response[v1.GetJobResponse], error)
+	// ListJobs returns jobs matching the given filters.
+	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
+	// CancelJob marks a running job as cancelled.
+	CancelJob(context.Context, *connect.Request[v1.CancelJobRequest]) (*connect.Response[v1.CancelJobResponse], error)
+	// Standalone RPCs — synchronous, single-step operations.
 	ScanFile(context.Context, *connect.Request[v1.ScanFileRequest]) (*connect.Response[v1.ScanFileResponse], error)
 	ConvertToPDF(context.Context, *connect.Request[v1.ConvertToPDFRequest]) (*connect.Response[v1.ConvertToPDFResponse], error)
 	MergePDFs(context.Context, *connect.Request[v1.MergePDFsRequest]) (*connect.Response[v1.MergePDFsResponse], error)
@@ -78,6 +97,24 @@ func NewFileProcessorServiceClient(httpClient connect.HTTPClient, baseURL string
 			httpClient,
 			baseURL+FileProcessorServiceProcessProcedure,
 			connect.WithSchema(fileProcessorServiceMethods.ByName("Process")),
+			connect.WithClientOptions(opts...),
+		),
+		getJob: connect.NewClient[v1.GetJobRequest, v1.GetJobResponse](
+			httpClient,
+			baseURL+FileProcessorServiceGetJobProcedure,
+			connect.WithSchema(fileProcessorServiceMethods.ByName("GetJob")),
+			connect.WithClientOptions(opts...),
+		),
+		listJobs: connect.NewClient[v1.ListJobsRequest, v1.ListJobsResponse](
+			httpClient,
+			baseURL+FileProcessorServiceListJobsProcedure,
+			connect.WithSchema(fileProcessorServiceMethods.ByName("ListJobs")),
+			connect.WithClientOptions(opts...),
+		),
+		cancelJob: connect.NewClient[v1.CancelJobRequest, v1.CancelJobResponse](
+			httpClient,
+			baseURL+FileProcessorServiceCancelJobProcedure,
+			connect.WithSchema(fileProcessorServiceMethods.ByName("CancelJob")),
 			connect.WithClientOptions(opts...),
 		),
 		scanFile: connect.NewClient[v1.ScanFileRequest, v1.ScanFileResponse](
@@ -116,6 +153,9 @@ func NewFileProcessorServiceClient(httpClient connect.HTTPClient, baseURL string
 // fileProcessorServiceClient implements FileProcessorServiceClient.
 type fileProcessorServiceClient struct {
 	process           *connect.Client[v1.ProcessRequest, v1.ProcessResponse]
+	getJob            *connect.Client[v1.GetJobRequest, v1.GetJobResponse]
+	listJobs          *connect.Client[v1.ListJobsRequest, v1.ListJobsResponse]
+	cancelJob         *connect.Client[v1.CancelJobRequest, v1.CancelJobResponse]
 	scanFile          *connect.Client[v1.ScanFileRequest, v1.ScanFileResponse]
 	convertToPDF      *connect.Client[v1.ConvertToPDFRequest, v1.ConvertToPDFResponse]
 	mergePDFs         *connect.Client[v1.MergePDFsRequest, v1.MergePDFsResponse]
@@ -126,6 +166,21 @@ type fileProcessorServiceClient struct {
 // Process calls fileprocessor.v1.FileProcessorService.Process.
 func (c *fileProcessorServiceClient) Process(ctx context.Context, req *connect.Request[v1.ProcessRequest]) (*connect.Response[v1.ProcessResponse], error) {
 	return c.process.CallUnary(ctx, req)
+}
+
+// GetJob calls fileprocessor.v1.FileProcessorService.GetJob.
+func (c *fileProcessorServiceClient) GetJob(ctx context.Context, req *connect.Request[v1.GetJobRequest]) (*connect.Response[v1.GetJobResponse], error) {
+	return c.getJob.CallUnary(ctx, req)
+}
+
+// ListJobs calls fileprocessor.v1.FileProcessorService.ListJobs.
+func (c *fileProcessorServiceClient) ListJobs(ctx context.Context, req *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error) {
+	return c.listJobs.CallUnary(ctx, req)
+}
+
+// CancelJob calls fileprocessor.v1.FileProcessorService.CancelJob.
+func (c *fileProcessorServiceClient) CancelJob(ctx context.Context, req *connect.Request[v1.CancelJobRequest]) (*connect.Response[v1.CancelJobResponse], error) {
+	return c.cancelJob.CallUnary(ctx, req)
 }
 
 // ScanFile calls fileprocessor.v1.FileProcessorService.ScanFile.
@@ -156,7 +211,17 @@ func (c *fileProcessorServiceClient) ExtractMarkdown(ctx context.Context, req *c
 // FileProcessorServiceHandler is an implementation of the fileprocessor.v1.FileProcessorService
 // service.
 type FileProcessorServiceHandler interface {
+	// Process submits a multi-step file processing pipeline. Returns immediately
+	// with a job_id; poll GetJob to track progress and retrieve results.
 	Process(context.Context, *connect.Request[v1.ProcessRequest]) (*connect.Response[v1.ProcessResponse], error)
+	// GetJob returns the current state of a processing job including status,
+	// progress, and results (once completed).
+	GetJob(context.Context, *connect.Request[v1.GetJobRequest]) (*connect.Response[v1.GetJobResponse], error)
+	// ListJobs returns jobs matching the given filters.
+	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
+	// CancelJob marks a running job as cancelled.
+	CancelJob(context.Context, *connect.Request[v1.CancelJobRequest]) (*connect.Response[v1.CancelJobResponse], error)
+	// Standalone RPCs — synchronous, single-step operations.
 	ScanFile(context.Context, *connect.Request[v1.ScanFileRequest]) (*connect.Response[v1.ScanFileResponse], error)
 	ConvertToPDF(context.Context, *connect.Request[v1.ConvertToPDFRequest]) (*connect.Response[v1.ConvertToPDFResponse], error)
 	MergePDFs(context.Context, *connect.Request[v1.MergePDFsRequest]) (*connect.Response[v1.MergePDFsResponse], error)
@@ -175,6 +240,24 @@ func NewFileProcessorServiceHandler(svc FileProcessorServiceHandler, opts ...con
 		FileProcessorServiceProcessProcedure,
 		svc.Process,
 		connect.WithSchema(fileProcessorServiceMethods.ByName("Process")),
+		connect.WithHandlerOptions(opts...),
+	)
+	fileProcessorServiceGetJobHandler := connect.NewUnaryHandler(
+		FileProcessorServiceGetJobProcedure,
+		svc.GetJob,
+		connect.WithSchema(fileProcessorServiceMethods.ByName("GetJob")),
+		connect.WithHandlerOptions(opts...),
+	)
+	fileProcessorServiceListJobsHandler := connect.NewUnaryHandler(
+		FileProcessorServiceListJobsProcedure,
+		svc.ListJobs,
+		connect.WithSchema(fileProcessorServiceMethods.ByName("ListJobs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	fileProcessorServiceCancelJobHandler := connect.NewUnaryHandler(
+		FileProcessorServiceCancelJobProcedure,
+		svc.CancelJob,
+		connect.WithSchema(fileProcessorServiceMethods.ByName("CancelJob")),
 		connect.WithHandlerOptions(opts...),
 	)
 	fileProcessorServiceScanFileHandler := connect.NewUnaryHandler(
@@ -211,6 +294,12 @@ func NewFileProcessorServiceHandler(svc FileProcessorServiceHandler, opts ...con
 		switch r.URL.Path {
 		case FileProcessorServiceProcessProcedure:
 			fileProcessorServiceProcessHandler.ServeHTTP(w, r)
+		case FileProcessorServiceGetJobProcedure:
+			fileProcessorServiceGetJobHandler.ServeHTTP(w, r)
+		case FileProcessorServiceListJobsProcedure:
+			fileProcessorServiceListJobsHandler.ServeHTTP(w, r)
+		case FileProcessorServiceCancelJobProcedure:
+			fileProcessorServiceCancelJobHandler.ServeHTTP(w, r)
 		case FileProcessorServiceScanFileProcedure:
 			fileProcessorServiceScanFileHandler.ServeHTTP(w, r)
 		case FileProcessorServiceConvertToPDFProcedure:
@@ -232,6 +321,18 @@ type UnimplementedFileProcessorServiceHandler struct{}
 
 func (UnimplementedFileProcessorServiceHandler) Process(context.Context, *connect.Request[v1.ProcessRequest]) (*connect.Response[v1.ProcessResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("fileprocessor.v1.FileProcessorService.Process is not implemented"))
+}
+
+func (UnimplementedFileProcessorServiceHandler) GetJob(context.Context, *connect.Request[v1.GetJobRequest]) (*connect.Response[v1.GetJobResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("fileprocessor.v1.FileProcessorService.GetJob is not implemented"))
+}
+
+func (UnimplementedFileProcessorServiceHandler) ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("fileprocessor.v1.FileProcessorService.ListJobs is not implemented"))
+}
+
+func (UnimplementedFileProcessorServiceHandler) CancelJob(context.Context, *connect.Request[v1.CancelJobRequest]) (*connect.Response[v1.CancelJobResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("fileprocessor.v1.FileProcessorService.CancelJob is not implemented"))
 }
 
 func (UnimplementedFileProcessorServiceHandler) ScanFile(context.Context, *connect.Request[v1.ScanFileRequest]) (*connect.Response[v1.ScanFileResponse], error) {

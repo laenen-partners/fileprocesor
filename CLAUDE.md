@@ -67,7 +67,7 @@ Set the following environment variables (or use a `.env` file loaded by mise):
 | `DOCLING_URL` | | Docling URL (empty = log stub) |
 | `PDF2IMG_URL` | | pdf2img URL (empty = log stub) |
 | `CLAMAV_ADDRESS` | | ClamAV TCP address (empty = skip scanning) |
-| `ENTITY_STORE_URL` | | EntityStore URL for job tracking (empty = disabled) |
+| `ENTITY_STORE_URL` | | EntityStore URL for job tracking (required for Process RPC) |
 | `API_KEYS` | | Comma-separated API keys for RPC auth (empty = auth disabled) |
 | `ALLOWED_BUCKETS` | | Comma-separated bucket allowlist (empty = all allowed) |
 | `RATE_LIMIT` | `0` | Requests per second per IP (0 = disabled) |
@@ -89,6 +89,9 @@ Set the following environment variables (or use a `.env` file loaded by mise):
 - DBOS workflows ensure durable execution; each operation runs as a named step.
 - All RPC inputs are validated before processing (bucket allowlist, key path safety, operation DAG integrity).
 - `server.New()` returns `(http.Handler, Closer, error)` — the Closer must be called on shutdown to drain DBOS workflows.
+- **Process RPC is async:** Returns `job_id` + `workflow_id` immediately; poll `GetJob` for status/progress/results.
+- **Standalone RPCs are sync:** ScanFile, ConvertToPDF, MergePDFs, GenerateThumbnail, ExtractMarkdown return results directly.
+- **Jobs SDK integration:** Process workflows publish a job entity, report progress per step, and store results on completion. GetJob, ListJobs, CancelJob RPCs backed by jobs.Client.
 
 ## Security
 

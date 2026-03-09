@@ -2,6 +2,7 @@ package fileprocesor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/laenen-partners/fileprocesor/gen/fileprocessor/v1/fileprocessorv1connect"
 	"github.com/laenen-partners/fileprocesor/gotenberg"
 	"github.com/laenen-partners/fileprocesor/pdf2img"
+	"github.com/laenen-partners/jobs"
 )
 
 // Handler implements the connect-go FileProcessorService.
@@ -22,7 +24,12 @@ type Handler struct {
 	proc *Processor
 }
 
+// Process submits a pipeline and returns immediately with a job ID.
 func (h *Handler) Process(ctx context.Context, req *connect.Request[fpv1.ProcessRequest]) (*connect.Response[fpv1.ProcessResponse], error) {
+	if h.proc.jobs == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("job tracking not configured: ENTITY_STORE_URL is required"))
+	}
+
 	if err := h.proc.validateProcessRequest(req.Msg); err != nil {
 		return nil, err
 	}
@@ -41,11 +48,87 @@ func (h *Handler) Process(ctx context.Context, req *connect.Request[fpv1.Process
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("start workflow: %w", err))
 	}
-	result, err := handle.GetResult()
+
+	// Wait for the job entity ID to be published by the workflow.
+	jobID, err := dbos.GetEvent[string](h.proc.dbosCtx, handle.GetWorkflowID(), "job_entity_id", 30)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("workflow failed: %w", err))
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("waiting for job creation: %w", err))
 	}
-	return connect.NewResponse(toProtoResponse(wfID, result)), nil
+
+	return connect.NewResponse(&fpv1.ProcessResponse{
+		JobId:      jobID,
+		WorkflowId: wfID,
+	}), nil
+}
+
+// GetJob returns the current state of a processing job.
+func (h *Handler) GetJob(ctx context.Context, req *connect.Request[fpv1.GetJobRequest]) (*connect.Response[fpv1.GetJobResponse], error) {
+	if h.proc.jobs == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("job tracking not configured"))
+	}
+	if req.Msg.JobId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("job_id is required"))
+	}
+
+	job, err := h.proc.jobs.Get(ctx, req.Msg.JobId)
+	if err != nil {
+		if err == jobs.ErrNotFound {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("job not found"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("get job: %w", err))
+	}
+
+	return connect.NewResponse(jobToProto(job)), nil
+}
+
+// ListJobs returns jobs matching the given filters.
+func (h *Handler) ListJobs(ctx context.Context, req *connect.Request[fpv1.ListJobsRequest]) (*connect.Response[fpv1.ListJobsResponse], error) {
+	if h.proc.jobs == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("job tracking not configured"))
+	}
+
+	filter := jobs.ListFilter{
+		OwnerID: req.Msg.OwnerId,
+		Status:  req.Msg.Status,
+		JobType: "file_processing",
+		Limit:   int(req.Msg.Limit),
+		Offset:  int(req.Msg.Offset),
+	}
+
+	jobList, err := h.proc.jobs.List(ctx, filter)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("list jobs: %w", err))
+	}
+
+	resp := &fpv1.ListJobsResponse{
+		Jobs: make([]*fpv1.GetJobResponse, 0, len(jobList)),
+	}
+	for _, j := range jobList {
+		resp.Jobs = append(resp.Jobs, jobToProto(&j))
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// CancelJob marks a running job as cancelled.
+func (h *Handler) CancelJob(ctx context.Context, req *connect.Request[fpv1.CancelJobRequest]) (*connect.Response[fpv1.CancelJobResponse], error) {
+	if h.proc.jobs == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("job tracking not configured"))
+	}
+	if req.Msg.JobId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("job_id is required"))
+	}
+
+	if err := h.proc.jobs.Cancel(ctx, req.Msg.JobId); err != nil {
+		if err == jobs.ErrNotFound {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("job not found"))
+		}
+		if err == jobs.ErrAlreadyFinalized {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("job already finalized"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("cancel job: %w", err))
+	}
+
+	return connect.NewResponse(&fpv1.CancelJobResponse{}), nil
 }
 
 func (h *Handler) ScanFile(ctx context.Context, req *connect.Request[fpv1.ScanFileRequest]) (*connect.Response[fpv1.ScanFileResponse], error) {
@@ -192,7 +275,7 @@ func (h *Handler) GenerateThumbnail(ctx context.Context, req *connect.Request[fp
 			if i == 1 {
 				resp.SizeBytes = int64(len(result.Data))
 				if tp.File != nil {
-					resp.Result = tp.File
+					resp.Result = tp.File //nolint:staticcheck // deprecated but still populated for backwards compat
 				}
 			}
 		}
@@ -211,7 +294,7 @@ func (h *Handler) GenerateThumbnail(ctx context.Context, req *connect.Request[fp
 		if err := h.proc.uploadFile(ctx, dest.Bucket, dest.Key, mime, result.Data); err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
-		resp.Result = dest
+		resp.Result = dest //nolint:staticcheck // deprecated but still populated for backwards compat
 	}
 	return connect.NewResponse(resp), nil
 }
@@ -246,6 +329,104 @@ func (h *Handler) ExtractMarkdown(ctx context.Context, req *connect.Request[fpv1
 }
 
 // --- Conversion helpers ---
+
+func jobToProto(j *jobs.Job) *fpv1.GetJobResponse {
+	resp := &fpv1.GetJobResponse{
+		JobId:      j.ID,
+		WorkflowId: j.WorkflowID,
+		Status:     statusToProto(j.Status),
+		Error:      j.Error,
+	}
+
+	if j.Progress != nil {
+		resp.Progress = &fpv1.JobProgress{
+			Step:    j.Progress.Step,
+			Current: int32(j.Progress.Current),
+			Total:   int32(j.Progress.Total),
+			Message: j.Progress.Message,
+		}
+	}
+
+	// Unmarshal results from job Results JSON.
+	if len(j.Results) > 0 {
+		var output ProcessOutput
+		if err := json.Unmarshal(j.Results, &output); err == nil && output.Results != nil {
+			resp.Results = make(map[string]*fpv1.OperationResult)
+			for name, r := range output.Results {
+				resp.Results[name] = operationResultToProto(r)
+			}
+		}
+	}
+
+	return resp
+}
+
+func statusToProto(s string) fpv1.JobStatus {
+	switch s {
+	case jobs.StatusPending:
+		return fpv1.JobStatus_JOB_STATUS_PENDING
+	case jobs.StatusRunning:
+		return fpv1.JobStatus_JOB_STATUS_RUNNING
+	case jobs.StatusCompleted:
+		return fpv1.JobStatus_JOB_STATUS_COMPLETED
+	case jobs.StatusFailed:
+		return fpv1.JobStatus_JOB_STATUS_FAILED
+	case jobs.StatusCancelled:
+		return fpv1.JobStatus_JOB_STATUS_CANCELLED
+	default:
+		return fpv1.JobStatus_JOB_STATUS_UNSPECIFIED
+	}
+}
+
+func operationResultToProto(r *OperationResultDef) *fpv1.OperationResult {
+	or := &fpv1.OperationResult{
+		Success:   r.Success,
+		Error:     r.Error,
+		SizeBytes: r.SizeBytes,
+	}
+	if r.ScanDetail != nil {
+		or.Detail = &fpv1.OperationResult_Scan{
+			Scan: &fpv1.ScanDetail{
+				Clean:  r.ScanDetail.Clean,
+				Detail: r.ScanDetail.Detail,
+			},
+		}
+	}
+	if r.MDDetail != nil {
+		or.Detail = &fpv1.OperationResult_Markdown{
+			Markdown: &fpv1.MarkdownDetail{
+				Markdown: r.MDDetail.Markdown,
+				Html:     r.MDDetail.HTML,
+			},
+		}
+	}
+	if len(r.ThumbnailPages) > 0 {
+		td := &fpv1.ThumbnailDetail{}
+		for _, pg := range r.ThumbnailPages {
+			tp := &fpv1.ThumbnailPage{
+				PageNumber: pg.PageNumber,
+				SizeBytes:  pg.SizeBytes,
+			}
+			if pg.Destination.Key != "" {
+				tp.File = &fpv1.FileRef{
+					Bucket:      pg.Destination.Bucket,
+					Key:         pg.Destination.Key,
+					ContentType: pg.Destination.ContentType,
+				}
+			}
+			td.Pages = append(td.Pages, tp)
+		}
+		or.Detail = &fpv1.OperationResult_Thumbnail{Thumbnail: td}
+	}
+	if r.Destination != nil {
+		or.Destination = &fpv1.FileRef{
+			Bucket:      r.Destination.Bucket,
+			Key:         r.Destination.Key,
+			ContentType: r.Destination.ContentType,
+		}
+	}
+	return or
+}
 
 func toProcessInput(msg *fpv1.ProcessRequest) ProcessInput {
 	pi := ProcessInput{
@@ -297,64 +478,6 @@ func toProcessInput(msg *fpv1.ProcessRequest) ProcessInput {
 		}
 	}
 	return pi
-}
-
-func toProtoResponse(workflowID string, output ProcessOutput) *fpv1.ProcessResponse {
-	resp := &fpv1.ProcessResponse{
-		WorkflowId: workflowID,
-		Results:    make(map[string]*fpv1.OperationResult),
-	}
-
-	for name, r := range output.Results {
-		or := &fpv1.OperationResult{
-			Success:   r.Success,
-			Error:     r.Error,
-			SizeBytes: r.SizeBytes,
-		}
-		if r.ScanDetail != nil {
-			or.Detail = &fpv1.OperationResult_Scan{
-				Scan: &fpv1.ScanDetail{
-					Clean:     r.ScanDetail.Clean,
-					Detail: r.ScanDetail.Detail,
-				},
-			}
-		}
-		if r.MDDetail != nil {
-			or.Detail = &fpv1.OperationResult_Markdown{
-				Markdown: &fpv1.MarkdownDetail{
-					Markdown: r.MDDetail.Markdown,
-					Html:     r.MDDetail.HTML,
-				},
-			}
-		}
-		if len(r.ThumbnailPages) > 0 {
-			td := &fpv1.ThumbnailDetail{}
-			for _, pg := range r.ThumbnailPages {
-				tp := &fpv1.ThumbnailPage{
-					PageNumber: pg.PageNumber,
-					SizeBytes:  pg.SizeBytes,
-				}
-				if pg.Destination.Key != "" {
-					tp.File = &fpv1.FileRef{
-						Bucket:      pg.Destination.Bucket,
-						Key:         pg.Destination.Key,
-						ContentType: pg.Destination.ContentType,
-					}
-				}
-				td.Pages = append(td.Pages, tp)
-			}
-			or.Detail = &fpv1.OperationResult_Thumbnail{Thumbnail: td}
-		}
-		if r.Destination != nil {
-			or.Destination = &fpv1.FileRef{
-				Bucket:      r.Destination.Bucket,
-				Key:         r.Destination.Key,
-				ContentType: r.Destination.ContentType,
-			}
-		}
-		resp.Results[name] = or
-	}
-	return resp
 }
 
 func imageFormatToString(f fpv1.ImageFormat) string {

@@ -122,6 +122,64 @@ func (PageSelection) EnumDescriptor() ([]byte, []int) {
 	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{1}
 }
 
+type JobStatus int32
+
+const (
+	JobStatus_JOB_STATUS_UNSPECIFIED JobStatus = 0
+	JobStatus_JOB_STATUS_PENDING     JobStatus = 1
+	JobStatus_JOB_STATUS_RUNNING     JobStatus = 2
+	JobStatus_JOB_STATUS_COMPLETED   JobStatus = 3
+	JobStatus_JOB_STATUS_FAILED      JobStatus = 4
+	JobStatus_JOB_STATUS_CANCELLED   JobStatus = 5
+)
+
+// Enum value maps for JobStatus.
+var (
+	JobStatus_name = map[int32]string{
+		0: "JOB_STATUS_UNSPECIFIED",
+		1: "JOB_STATUS_PENDING",
+		2: "JOB_STATUS_RUNNING",
+		3: "JOB_STATUS_COMPLETED",
+		4: "JOB_STATUS_FAILED",
+		5: "JOB_STATUS_CANCELLED",
+	}
+	JobStatus_value = map[string]int32{
+		"JOB_STATUS_UNSPECIFIED": 0,
+		"JOB_STATUS_PENDING":     1,
+		"JOB_STATUS_RUNNING":     2,
+		"JOB_STATUS_COMPLETED":   3,
+		"JOB_STATUS_FAILED":      4,
+		"JOB_STATUS_CANCELLED":   5,
+	}
+)
+
+func (x JobStatus) Enum() *JobStatus {
+	p := new(JobStatus)
+	*p = x
+	return p
+}
+
+func (x JobStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (JobStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_fileprocessor_v1_fileprocessor_proto_enumTypes[2].Descriptor()
+}
+
+func (JobStatus) Type() protoreflect.EnumType {
+	return &file_fileprocessor_v1_fileprocessor_proto_enumTypes[2]
+}
+
+func (x JobStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use JobStatus.Descriptor instead.
+func (JobStatus) EnumDescriptor() ([]byte, []int) {
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{2}
+}
+
 type FileRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Bucket        string                 `protobuf:"bytes,1,opt,name=bucket,proto3" json:"bucket,omitempty"` // Bucket name (must be in server's ALLOWED_BUCKETS if configured).
@@ -670,10 +728,11 @@ func (*ExtractMarkdownOp) Descriptor() ([]byte, []int) {
 	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{8}
 }
 
+// ProcessResponse is returned immediately when a pipeline is submitted.
 type ProcessResponse struct {
-	state         protoimpl.MessageState      `protogen:"open.v1"`
-	WorkflowId    string                      `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
-	Results       map[string]*OperationResult `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`                // Job entity ID — use with GetJob to poll status.
+	WorkflowId    string                 `protobuf:"bytes,2,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"` // DBOS workflow ID.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -708,18 +767,18 @@ func (*ProcessResponse) Descriptor() ([]byte, []int) {
 	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{9}
 }
 
+func (x *ProcessResponse) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
 func (x *ProcessResponse) GetWorkflowId() string {
 	if x != nil {
 		return x.WorkflowId
 	}
 	return ""
-}
-
-func (x *ProcessResponse) GetResults() map[string]*OperationResult {
-	if x != nil {
-		return x.Results
-	}
-	return nil
 }
 
 type OperationResult struct {
@@ -1062,6 +1121,395 @@ func (x *ThumbnailDetail) GetPages() []*ThumbnailPage {
 	return nil
 }
 
+type GetJobRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetJobRequest) Reset() {
+	*x = GetJobRequest{}
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetJobRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetJobRequest) ProtoMessage() {}
+
+func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetJobRequest.ProtoReflect.Descriptor instead.
+func (*GetJobRequest) Descriptor() ([]byte, []int) {
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetJobRequest) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+type GetJobResponse struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	JobId      string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	WorkflowId string                 `protobuf:"bytes,2,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	Status     JobStatus              `protobuf:"varint,3,opt,name=status,proto3,enum=fileprocessor.v1.JobStatus" json:"status,omitempty"`
+	Progress   *JobProgress           `protobuf:"bytes,4,opt,name=progress,proto3" json:"progress,omitempty"`
+	Error      string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	// Results are populated once the job reaches COMPLETED status.
+	Results       map[string]*OperationResult `protobuf:"bytes,6,rep,name=results,proto3" json:"results,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetJobResponse) Reset() {
+	*x = GetJobResponse{}
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetJobResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetJobResponse) ProtoMessage() {}
+
+func (x *GetJobResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetJobResponse.ProtoReflect.Descriptor instead.
+func (*GetJobResponse) Descriptor() ([]byte, []int) {
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetJobResponse) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *GetJobResponse) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *GetJobResponse) GetStatus() JobStatus {
+	if x != nil {
+		return x.Status
+	}
+	return JobStatus_JOB_STATUS_UNSPECIFIED
+}
+
+func (x *GetJobResponse) GetProgress() *JobProgress {
+	if x != nil {
+		return x.Progress
+	}
+	return nil
+}
+
+func (x *GetJobResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *GetJobResponse) GetResults() map[string]*OperationResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+type JobProgress struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Step          string                 `protobuf:"bytes,1,opt,name=step,proto3" json:"step,omitempty"`        // Current step name (e.g. "downloading", operation name, "uploading").
+	Current       int32                  `protobuf:"varint,2,opt,name=current,proto3" json:"current,omitempty"` // Current item within the step.
+	Total         int32                  `protobuf:"varint,3,opt,name=total,proto3" json:"total,omitempty"`     // Total items in the step.
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`  // Optional human-readable message.
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobProgress) Reset() {
+	*x = JobProgress{}
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobProgress) ProtoMessage() {}
+
+func (x *JobProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobProgress.ProtoReflect.Descriptor instead.
+func (*JobProgress) Descriptor() ([]byte, []int) {
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *JobProgress) GetStep() string {
+	if x != nil {
+		return x.Step
+	}
+	return ""
+}
+
+func (x *JobProgress) GetCurrent() int32 {
+	if x != nil {
+		return x.Current
+	}
+	return 0
+}
+
+func (x *JobProgress) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *JobProgress) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+type ListJobsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OwnerId       string                 `protobuf:"bytes,1,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"` // Filter by job owner.
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`                  // Filter by status (pending, running, completed, failed, cancelled).
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`                   // Max results (default 100).
+	Offset        int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`                 // Pagination offset.
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobsRequest) Reset() {
+	*x = ListJobsRequest{}
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobsRequest) ProtoMessage() {}
+
+func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
+func (*ListJobsRequest) Descriptor() ([]byte, []int) {
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ListJobsRequest) GetOwnerId() string {
+	if x != nil {
+		return x.OwnerId
+	}
+	return ""
+}
+
+func (x *ListJobsRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListJobsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListJobsRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+type ListJobsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Jobs          []*GetJobResponse      `protobuf:"bytes,1,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobsResponse) Reset() {
+	*x = ListJobsResponse{}
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobsResponse) ProtoMessage() {}
+
+func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobsResponse.ProtoReflect.Descriptor instead.
+func (*ListJobsResponse) Descriptor() ([]byte, []int) {
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ListJobsResponse) GetJobs() []*GetJobResponse {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
+type CancelJobRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelJobRequest) Reset() {
+	*x = CancelJobRequest{}
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelJobRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelJobRequest) ProtoMessage() {}
+
+func (x *CancelJobRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelJobRequest.ProtoReflect.Descriptor instead.
+func (*CancelJobRequest) Descriptor() ([]byte, []int) {
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *CancelJobRequest) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+type CancelJobResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelJobResponse) Reset() {
+	*x = CancelJobResponse{}
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelJobResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelJobResponse) ProtoMessage() {}
+
+func (x *CancelJobResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelJobResponse.ProtoReflect.Descriptor instead.
+func (*CancelJobResponse) Descriptor() ([]byte, []int) {
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{21}
+}
+
 type ScanFileRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Bucket        string                 `protobuf:"bytes,1,opt,name=bucket,proto3" json:"bucket,omitempty"`
@@ -1072,7 +1520,7 @@ type ScanFileRequest struct {
 
 func (x *ScanFileRequest) Reset() {
 	*x = ScanFileRequest{}
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[15]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1084,7 +1532,7 @@ func (x *ScanFileRequest) String() string {
 func (*ScanFileRequest) ProtoMessage() {}
 
 func (x *ScanFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[15]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1097,7 +1545,7 @@ func (x *ScanFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScanFileRequest.ProtoReflect.Descriptor instead.
 func (*ScanFileRequest) Descriptor() ([]byte, []int) {
-	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{15}
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ScanFileRequest) GetBucket() string {
@@ -1124,7 +1572,7 @@ type ScanFileResponse struct {
 
 func (x *ScanFileResponse) Reset() {
 	*x = ScanFileResponse{}
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[16]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1136,7 +1584,7 @@ func (x *ScanFileResponse) String() string {
 func (*ScanFileResponse) ProtoMessage() {}
 
 func (x *ScanFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[16]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1149,7 +1597,7 @@ func (x *ScanFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScanFileResponse.ProtoReflect.Descriptor instead.
 func (*ScanFileResponse) Descriptor() ([]byte, []int) {
-	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{16}
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ScanFileResponse) GetClean() bool {
@@ -1180,7 +1628,7 @@ type ConvertToPDFRequest struct {
 
 func (x *ConvertToPDFRequest) Reset() {
 	*x = ConvertToPDFRequest{}
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[17]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1192,7 +1640,7 @@ func (x *ConvertToPDFRequest) String() string {
 func (*ConvertToPDFRequest) ProtoMessage() {}
 
 func (x *ConvertToPDFRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[17]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1205,7 +1653,7 @@ func (x *ConvertToPDFRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConvertToPDFRequest.ProtoReflect.Descriptor instead.
 func (*ConvertToPDFRequest) Descriptor() ([]byte, []int) {
-	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{17}
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ConvertToPDFRequest) GetBucket() string {
@@ -1246,7 +1694,7 @@ type ConvertToPDFResponse struct {
 
 func (x *ConvertToPDFResponse) Reset() {
 	*x = ConvertToPDFResponse{}
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[18]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1258,7 +1706,7 @@ func (x *ConvertToPDFResponse) String() string {
 func (*ConvertToPDFResponse) ProtoMessage() {}
 
 func (x *ConvertToPDFResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[18]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1271,7 +1719,7 @@ func (x *ConvertToPDFResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConvertToPDFResponse.ProtoReflect.Descriptor instead.
 func (*ConvertToPDFResponse) Descriptor() ([]byte, []int) {
-	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{18}
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ConvertToPDFResponse) GetResult() *FileRef {
@@ -1298,7 +1746,7 @@ type MergePDFsRequest struct {
 
 func (x *MergePDFsRequest) Reset() {
 	*x = MergePDFsRequest{}
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[19]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1310,7 +1758,7 @@ func (x *MergePDFsRequest) String() string {
 func (*MergePDFsRequest) ProtoMessage() {}
 
 func (x *MergePDFsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[19]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1323,7 +1771,7 @@ func (x *MergePDFsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MergePDFsRequest.ProtoReflect.Descriptor instead.
 func (*MergePDFsRequest) Descriptor() ([]byte, []int) {
-	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{19}
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *MergePDFsRequest) GetFiles() []*FileRef {
@@ -1350,7 +1798,7 @@ type MergePDFsResponse struct {
 
 func (x *MergePDFsResponse) Reset() {
 	*x = MergePDFsResponse{}
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[20]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1362,7 +1810,7 @@ func (x *MergePDFsResponse) String() string {
 func (*MergePDFsResponse) ProtoMessage() {}
 
 func (x *MergePDFsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[20]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1375,7 +1823,7 @@ func (x *MergePDFsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MergePDFsResponse.ProtoReflect.Descriptor instead.
 func (*MergePDFsResponse) Descriptor() ([]byte, []int) {
-	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{20}
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *MergePDFsResponse) GetResult() *FileRef {
@@ -1407,7 +1855,7 @@ type GenerateThumbnailRequest struct {
 
 func (x *GenerateThumbnailRequest) Reset() {
 	*x = GenerateThumbnailRequest{}
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[21]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1419,7 +1867,7 @@ func (x *GenerateThumbnailRequest) String() string {
 func (*GenerateThumbnailRequest) ProtoMessage() {}
 
 func (x *GenerateThumbnailRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[21]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1432,7 +1880,7 @@ func (x *GenerateThumbnailRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateThumbnailRequest.ProtoReflect.Descriptor instead.
 func (*GenerateThumbnailRequest) Descriptor() ([]byte, []int) {
-	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{21}
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GenerateThumbnailRequest) GetBucket() string {
@@ -1499,7 +1947,7 @@ type GenerateThumbnailResponse struct {
 
 func (x *GenerateThumbnailResponse) Reset() {
 	*x = GenerateThumbnailResponse{}
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[22]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1511,7 +1959,7 @@ func (x *GenerateThumbnailResponse) String() string {
 func (*GenerateThumbnailResponse) ProtoMessage() {}
 
 func (x *GenerateThumbnailResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[22]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1524,7 +1972,7 @@ func (x *GenerateThumbnailResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateThumbnailResponse.ProtoReflect.Descriptor instead.
 func (*GenerateThumbnailResponse) Descriptor() ([]byte, []int) {
-	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{22}
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{29}
 }
 
 // Deprecated: Marked as deprecated in fileprocessor/v1/fileprocessor.proto.
@@ -1560,7 +2008,7 @@ type ExtractMarkdownRequest struct {
 
 func (x *ExtractMarkdownRequest) Reset() {
 	*x = ExtractMarkdownRequest{}
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[23]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1572,7 +2020,7 @@ func (x *ExtractMarkdownRequest) String() string {
 func (*ExtractMarkdownRequest) ProtoMessage() {}
 
 func (x *ExtractMarkdownRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[23]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1585,7 +2033,7 @@ func (x *ExtractMarkdownRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExtractMarkdownRequest.ProtoReflect.Descriptor instead.
 func (*ExtractMarkdownRequest) Descriptor() ([]byte, []int) {
-	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{23}
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ExtractMarkdownRequest) GetBucket() string {
@@ -1620,7 +2068,7 @@ type ExtractMarkdownResponse struct {
 
 func (x *ExtractMarkdownResponse) Reset() {
 	*x = ExtractMarkdownResponse{}
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[24]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1632,7 +2080,7 @@ func (x *ExtractMarkdownResponse) String() string {
 func (*ExtractMarkdownResponse) ProtoMessage() {}
 
 func (x *ExtractMarkdownResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[24]
+	mi := &file_fileprocessor_v1_fileprocessor_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1645,7 +2093,7 @@ func (x *ExtractMarkdownResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExtractMarkdownResponse.ProtoReflect.Descriptor instead.
 func (*ExtractMarkdownResponse) Descriptor() ([]byte, []int) {
-	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{24}
+	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ExtractMarkdownResponse) GetMarkdown() string {
@@ -1711,14 +2159,11 @@ const file_fileprocessor_v1_fileprocessor_proto_rawDesc = "" +
 	"\x03dpi\x18\x02 \x01(\x05R\x03dpi\x125\n" +
 	"\x06format\x18\x03 \x01(\x0e2\x1d.fileprocessor.v1.ImageFormatR\x06format\x125\n" +
 	"\x05pages\x18\x04 \x01(\x0e2\x1f.fileprocessor.v1.PageSelectionR\x05pages\"\x13\n" +
-	"\x11ExtractMarkdownOp\"\xdb\x01\n" +
-	"\x0fProcessResponse\x12\x1f\n" +
-	"\vworkflow_id\x18\x01 \x01(\tR\n" +
-	"workflowId\x12H\n" +
-	"\aresults\x18\x02 \x03(\v2..fileprocessor.v1.ProcessResponse.ResultsEntryR\aresults\x1a]\n" +
-	"\fResultsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x127\n" +
-	"\x05value\x18\x02 \x01(\v2!.fileprocessor.v1.OperationResultR\x05value:\x028\x01\"\xde\x02\n" +
+	"\x11ExtractMarkdownOp\"I\n" +
+	"\x0fProcessResponse\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1f\n" +
+	"\vworkflow_id\x18\x02 \x01(\tR\n" +
+	"workflowId\"\xde\x02\n" +
 	"\x0fOperationResult\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x122\n" +
@@ -1745,7 +2190,35 @@ const file_fileprocessor_v1_fileprocessor_proto_rawDesc = "" +
 	"\n" +
 	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\"H\n" +
 	"\x0fThumbnailDetail\x125\n" +
-	"\x05pages\x18\x01 \x03(\v2\x1f.fileprocessor.v1.ThumbnailPageR\x05pages\";\n" +
+	"\x05pages\x18\x01 \x03(\v2\x1f.fileprocessor.v1.ThumbnailPageR\x05pages\"&\n" +
+	"\rGetJobRequest\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"\xf6\x02\n" +
+	"\x0eGetJobResponse\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1f\n" +
+	"\vworkflow_id\x18\x02 \x01(\tR\n" +
+	"workflowId\x123\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x1b.fileprocessor.v1.JobStatusR\x06status\x129\n" +
+	"\bprogress\x18\x04 \x01(\v2\x1d.fileprocessor.v1.JobProgressR\bprogress\x12\x14\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error\x12G\n" +
+	"\aresults\x18\x06 \x03(\v2-.fileprocessor.v1.GetJobResponse.ResultsEntryR\aresults\x1a]\n" +
+	"\fResultsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x127\n" +
+	"\x05value\x18\x02 \x01(\v2!.fileprocessor.v1.OperationResultR\x05value:\x028\x01\"k\n" +
+	"\vJobProgress\x12\x12\n" +
+	"\x04step\x18\x01 \x01(\tR\x04step\x12\x18\n" +
+	"\acurrent\x18\x02 \x01(\x05R\acurrent\x12\x14\n" +
+	"\x05total\x18\x03 \x01(\x05R\x05total\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\"r\n" +
+	"\x0fListJobsRequest\x12\x19\n" +
+	"\bowner_id\x18\x01 \x01(\tR\aownerId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x04 \x01(\x05R\x06offset\"H\n" +
+	"\x10ListJobsResponse\x124\n" +
+	"\x04jobs\x18\x01 \x03(\v2 .fileprocessor.v1.GetJobResponseR\x04jobs\")\n" +
+	"\x10CancelJobRequest\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"\x13\n" +
+	"\x11CancelJobResponse\";\n" +
 	"\x0fScanFileRequest\x12\x16\n" +
 	"\x06bucket\x18\x01 \x01(\tR\x06bucket\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"@\n" +
@@ -1797,9 +2270,19 @@ const file_fileprocessor_v1_fileprocessor_proto_rawDesc = "" +
 	"\rPageSelection\x12\x1e\n" +
 	"\x1aPAGE_SELECTION_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14PAGE_SELECTION_FIRST\x10\x01\x12\x16\n" +
-	"\x12PAGE_SELECTION_ALL\x10\x022\xc4\x04\n" +
+	"\x12PAGE_SELECTION_ALL\x10\x02*\xa2\x01\n" +
+	"\tJobStatus\x12\x1a\n" +
+	"\x16JOB_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12JOB_STATUS_PENDING\x10\x01\x12\x16\n" +
+	"\x12JOB_STATUS_RUNNING\x10\x02\x12\x18\n" +
+	"\x14JOB_STATUS_COMPLETED\x10\x03\x12\x15\n" +
+	"\x11JOB_STATUS_FAILED\x10\x04\x12\x18\n" +
+	"\x14JOB_STATUS_CANCELLED\x10\x052\xba\x06\n" +
 	"\x14FileProcessorService\x12N\n" +
-	"\aProcess\x12 .fileprocessor.v1.ProcessRequest\x1a!.fileprocessor.v1.ProcessResponse\x12Q\n" +
+	"\aProcess\x12 .fileprocessor.v1.ProcessRequest\x1a!.fileprocessor.v1.ProcessResponse\x12K\n" +
+	"\x06GetJob\x12\x1f.fileprocessor.v1.GetJobRequest\x1a .fileprocessor.v1.GetJobResponse\x12Q\n" +
+	"\bListJobs\x12!.fileprocessor.v1.ListJobsRequest\x1a\".fileprocessor.v1.ListJobsResponse\x12T\n" +
+	"\tCancelJob\x12\".fileprocessor.v1.CancelJobRequest\x1a#.fileprocessor.v1.CancelJobResponse\x12Q\n" +
 	"\bScanFile\x12!.fileprocessor.v1.ScanFileRequest\x1a\".fileprocessor.v1.ScanFileResponse\x12]\n" +
 	"\fConvertToPDF\x12%.fileprocessor.v1.ConvertToPDFRequest\x1a&.fileprocessor.v1.ConvertToPDFResponse\x12T\n" +
 	"\tMergePDFs\x12\".fileprocessor.v1.MergePDFsRequest\x1a#.fileprocessor.v1.MergePDFsResponse\x12l\n" +
@@ -1818,88 +2301,105 @@ func file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP() []byte {
 	return file_fileprocessor_v1_fileprocessor_proto_rawDescData
 }
 
-var file_fileprocessor_v1_fileprocessor_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_fileprocessor_v1_fileprocessor_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_fileprocessor_v1_fileprocessor_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_fileprocessor_v1_fileprocessor_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_fileprocessor_v1_fileprocessor_proto_goTypes = []any{
 	(ImageFormat)(0),                  // 0: fileprocessor.v1.ImageFormat
 	(PageSelection)(0),                // 1: fileprocessor.v1.PageSelection
-	(*FileRef)(nil),                   // 2: fileprocessor.v1.FileRef
-	(*ProcessRequest)(nil),            // 3: fileprocessor.v1.ProcessRequest
-	(*FileInput)(nil),                 // 4: fileprocessor.v1.FileInput
-	(*Operation)(nil),                 // 5: fileprocessor.v1.Operation
-	(*ScanOp)(nil),                    // 6: fileprocessor.v1.ScanOp
-	(*ConvertToPDFOp)(nil),            // 7: fileprocessor.v1.ConvertToPDFOp
-	(*MergePDFsOp)(nil),               // 8: fileprocessor.v1.MergePDFsOp
-	(*ThumbnailOp)(nil),               // 9: fileprocessor.v1.ThumbnailOp
-	(*ExtractMarkdownOp)(nil),         // 10: fileprocessor.v1.ExtractMarkdownOp
-	(*ProcessResponse)(nil),           // 11: fileprocessor.v1.ProcessResponse
-	(*OperationResult)(nil),           // 12: fileprocessor.v1.OperationResult
-	(*ScanDetail)(nil),                // 13: fileprocessor.v1.ScanDetail
-	(*MarkdownDetail)(nil),            // 14: fileprocessor.v1.MarkdownDetail
-	(*ThumbnailPage)(nil),             // 15: fileprocessor.v1.ThumbnailPage
-	(*ThumbnailDetail)(nil),           // 16: fileprocessor.v1.ThumbnailDetail
-	(*ScanFileRequest)(nil),           // 17: fileprocessor.v1.ScanFileRequest
-	(*ScanFileResponse)(nil),          // 18: fileprocessor.v1.ScanFileResponse
-	(*ConvertToPDFRequest)(nil),       // 19: fileprocessor.v1.ConvertToPDFRequest
-	(*ConvertToPDFResponse)(nil),      // 20: fileprocessor.v1.ConvertToPDFResponse
-	(*MergePDFsRequest)(nil),          // 21: fileprocessor.v1.MergePDFsRequest
-	(*MergePDFsResponse)(nil),         // 22: fileprocessor.v1.MergePDFsResponse
-	(*GenerateThumbnailRequest)(nil),  // 23: fileprocessor.v1.GenerateThumbnailRequest
-	(*GenerateThumbnailResponse)(nil), // 24: fileprocessor.v1.GenerateThumbnailResponse
-	(*ExtractMarkdownRequest)(nil),    // 25: fileprocessor.v1.ExtractMarkdownRequest
-	(*ExtractMarkdownResponse)(nil),   // 26: fileprocessor.v1.ExtractMarkdownResponse
-	nil,                               // 27: fileprocessor.v1.ProcessRequest.DestinationsEntry
-	nil,                               // 28: fileprocessor.v1.ProcessResponse.ResultsEntry
+	(JobStatus)(0),                    // 2: fileprocessor.v1.JobStatus
+	(*FileRef)(nil),                   // 3: fileprocessor.v1.FileRef
+	(*ProcessRequest)(nil),            // 4: fileprocessor.v1.ProcessRequest
+	(*FileInput)(nil),                 // 5: fileprocessor.v1.FileInput
+	(*Operation)(nil),                 // 6: fileprocessor.v1.Operation
+	(*ScanOp)(nil),                    // 7: fileprocessor.v1.ScanOp
+	(*ConvertToPDFOp)(nil),            // 8: fileprocessor.v1.ConvertToPDFOp
+	(*MergePDFsOp)(nil),               // 9: fileprocessor.v1.MergePDFsOp
+	(*ThumbnailOp)(nil),               // 10: fileprocessor.v1.ThumbnailOp
+	(*ExtractMarkdownOp)(nil),         // 11: fileprocessor.v1.ExtractMarkdownOp
+	(*ProcessResponse)(nil),           // 12: fileprocessor.v1.ProcessResponse
+	(*OperationResult)(nil),           // 13: fileprocessor.v1.OperationResult
+	(*ScanDetail)(nil),                // 14: fileprocessor.v1.ScanDetail
+	(*MarkdownDetail)(nil),            // 15: fileprocessor.v1.MarkdownDetail
+	(*ThumbnailPage)(nil),             // 16: fileprocessor.v1.ThumbnailPage
+	(*ThumbnailDetail)(nil),           // 17: fileprocessor.v1.ThumbnailDetail
+	(*GetJobRequest)(nil),             // 18: fileprocessor.v1.GetJobRequest
+	(*GetJobResponse)(nil),            // 19: fileprocessor.v1.GetJobResponse
+	(*JobProgress)(nil),               // 20: fileprocessor.v1.JobProgress
+	(*ListJobsRequest)(nil),           // 21: fileprocessor.v1.ListJobsRequest
+	(*ListJobsResponse)(nil),          // 22: fileprocessor.v1.ListJobsResponse
+	(*CancelJobRequest)(nil),          // 23: fileprocessor.v1.CancelJobRequest
+	(*CancelJobResponse)(nil),         // 24: fileprocessor.v1.CancelJobResponse
+	(*ScanFileRequest)(nil),           // 25: fileprocessor.v1.ScanFileRequest
+	(*ScanFileResponse)(nil),          // 26: fileprocessor.v1.ScanFileResponse
+	(*ConvertToPDFRequest)(nil),       // 27: fileprocessor.v1.ConvertToPDFRequest
+	(*ConvertToPDFResponse)(nil),      // 28: fileprocessor.v1.ConvertToPDFResponse
+	(*MergePDFsRequest)(nil),          // 29: fileprocessor.v1.MergePDFsRequest
+	(*MergePDFsResponse)(nil),         // 30: fileprocessor.v1.MergePDFsResponse
+	(*GenerateThumbnailRequest)(nil),  // 31: fileprocessor.v1.GenerateThumbnailRequest
+	(*GenerateThumbnailResponse)(nil), // 32: fileprocessor.v1.GenerateThumbnailResponse
+	(*ExtractMarkdownRequest)(nil),    // 33: fileprocessor.v1.ExtractMarkdownRequest
+	(*ExtractMarkdownResponse)(nil),   // 34: fileprocessor.v1.ExtractMarkdownResponse
+	nil,                               // 35: fileprocessor.v1.ProcessRequest.DestinationsEntry
+	nil,                               // 36: fileprocessor.v1.GetJobResponse.ResultsEntry
 }
 var file_fileprocessor_v1_fileprocessor_proto_depIdxs = []int32{
-	4,  // 0: fileprocessor.v1.ProcessRequest.inputs:type_name -> fileprocessor.v1.FileInput
-	5,  // 1: fileprocessor.v1.ProcessRequest.operations:type_name -> fileprocessor.v1.Operation
-	27, // 2: fileprocessor.v1.ProcessRequest.destinations:type_name -> fileprocessor.v1.ProcessRequest.DestinationsEntry
-	6,  // 3: fileprocessor.v1.Operation.scan:type_name -> fileprocessor.v1.ScanOp
-	7,  // 4: fileprocessor.v1.Operation.convert_to_pdf:type_name -> fileprocessor.v1.ConvertToPDFOp
-	8,  // 5: fileprocessor.v1.Operation.merge_pdfs:type_name -> fileprocessor.v1.MergePDFsOp
-	9,  // 6: fileprocessor.v1.Operation.thumbnail:type_name -> fileprocessor.v1.ThumbnailOp
-	10, // 7: fileprocessor.v1.Operation.extract_markdown:type_name -> fileprocessor.v1.ExtractMarkdownOp
+	5,  // 0: fileprocessor.v1.ProcessRequest.inputs:type_name -> fileprocessor.v1.FileInput
+	6,  // 1: fileprocessor.v1.ProcessRequest.operations:type_name -> fileprocessor.v1.Operation
+	35, // 2: fileprocessor.v1.ProcessRequest.destinations:type_name -> fileprocessor.v1.ProcessRequest.DestinationsEntry
+	7,  // 3: fileprocessor.v1.Operation.scan:type_name -> fileprocessor.v1.ScanOp
+	8,  // 4: fileprocessor.v1.Operation.convert_to_pdf:type_name -> fileprocessor.v1.ConvertToPDFOp
+	9,  // 5: fileprocessor.v1.Operation.merge_pdfs:type_name -> fileprocessor.v1.MergePDFsOp
+	10, // 6: fileprocessor.v1.Operation.thumbnail:type_name -> fileprocessor.v1.ThumbnailOp
+	11, // 7: fileprocessor.v1.Operation.extract_markdown:type_name -> fileprocessor.v1.ExtractMarkdownOp
 	0,  // 8: fileprocessor.v1.ThumbnailOp.format:type_name -> fileprocessor.v1.ImageFormat
 	1,  // 9: fileprocessor.v1.ThumbnailOp.pages:type_name -> fileprocessor.v1.PageSelection
-	28, // 10: fileprocessor.v1.ProcessResponse.results:type_name -> fileprocessor.v1.ProcessResponse.ResultsEntry
-	13, // 11: fileprocessor.v1.OperationResult.scan:type_name -> fileprocessor.v1.ScanDetail
-	14, // 12: fileprocessor.v1.OperationResult.markdown:type_name -> fileprocessor.v1.MarkdownDetail
-	16, // 13: fileprocessor.v1.OperationResult.thumbnail:type_name -> fileprocessor.v1.ThumbnailDetail
-	2,  // 14: fileprocessor.v1.OperationResult.destination:type_name -> fileprocessor.v1.FileRef
-	2,  // 15: fileprocessor.v1.ThumbnailPage.file:type_name -> fileprocessor.v1.FileRef
-	15, // 16: fileprocessor.v1.ThumbnailDetail.pages:type_name -> fileprocessor.v1.ThumbnailPage
-	2,  // 17: fileprocessor.v1.ConvertToPDFRequest.destination:type_name -> fileprocessor.v1.FileRef
-	2,  // 18: fileprocessor.v1.ConvertToPDFResponse.result:type_name -> fileprocessor.v1.FileRef
-	2,  // 19: fileprocessor.v1.MergePDFsRequest.files:type_name -> fileprocessor.v1.FileRef
-	2,  // 20: fileprocessor.v1.MergePDFsRequest.destination:type_name -> fileprocessor.v1.FileRef
-	2,  // 21: fileprocessor.v1.MergePDFsResponse.result:type_name -> fileprocessor.v1.FileRef
-	2,  // 22: fileprocessor.v1.GenerateThumbnailRequest.destination:type_name -> fileprocessor.v1.FileRef
-	0,  // 23: fileprocessor.v1.GenerateThumbnailRequest.format:type_name -> fileprocessor.v1.ImageFormat
-	1,  // 24: fileprocessor.v1.GenerateThumbnailRequest.pages:type_name -> fileprocessor.v1.PageSelection
-	2,  // 25: fileprocessor.v1.GenerateThumbnailResponse.result:type_name -> fileprocessor.v1.FileRef
-	15, // 26: fileprocessor.v1.GenerateThumbnailResponse.results:type_name -> fileprocessor.v1.ThumbnailPage
-	2,  // 27: fileprocessor.v1.ExtractMarkdownRequest.docling_json_destination:type_name -> fileprocessor.v1.FileRef
-	2,  // 28: fileprocessor.v1.ExtractMarkdownResponse.docling_json:type_name -> fileprocessor.v1.FileRef
-	2,  // 29: fileprocessor.v1.ProcessRequest.DestinationsEntry.value:type_name -> fileprocessor.v1.FileRef
-	12, // 30: fileprocessor.v1.ProcessResponse.ResultsEntry.value:type_name -> fileprocessor.v1.OperationResult
-	3,  // 31: fileprocessor.v1.FileProcessorService.Process:input_type -> fileprocessor.v1.ProcessRequest
-	17, // 32: fileprocessor.v1.FileProcessorService.ScanFile:input_type -> fileprocessor.v1.ScanFileRequest
-	19, // 33: fileprocessor.v1.FileProcessorService.ConvertToPDF:input_type -> fileprocessor.v1.ConvertToPDFRequest
-	21, // 34: fileprocessor.v1.FileProcessorService.MergePDFs:input_type -> fileprocessor.v1.MergePDFsRequest
-	23, // 35: fileprocessor.v1.FileProcessorService.GenerateThumbnail:input_type -> fileprocessor.v1.GenerateThumbnailRequest
-	25, // 36: fileprocessor.v1.FileProcessorService.ExtractMarkdown:input_type -> fileprocessor.v1.ExtractMarkdownRequest
-	11, // 37: fileprocessor.v1.FileProcessorService.Process:output_type -> fileprocessor.v1.ProcessResponse
-	18, // 38: fileprocessor.v1.FileProcessorService.ScanFile:output_type -> fileprocessor.v1.ScanFileResponse
-	20, // 39: fileprocessor.v1.FileProcessorService.ConvertToPDF:output_type -> fileprocessor.v1.ConvertToPDFResponse
-	22, // 40: fileprocessor.v1.FileProcessorService.MergePDFs:output_type -> fileprocessor.v1.MergePDFsResponse
-	24, // 41: fileprocessor.v1.FileProcessorService.GenerateThumbnail:output_type -> fileprocessor.v1.GenerateThumbnailResponse
-	26, // 42: fileprocessor.v1.FileProcessorService.ExtractMarkdown:output_type -> fileprocessor.v1.ExtractMarkdownResponse
-	37, // [37:43] is the sub-list for method output_type
-	31, // [31:37] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	14, // 10: fileprocessor.v1.OperationResult.scan:type_name -> fileprocessor.v1.ScanDetail
+	15, // 11: fileprocessor.v1.OperationResult.markdown:type_name -> fileprocessor.v1.MarkdownDetail
+	17, // 12: fileprocessor.v1.OperationResult.thumbnail:type_name -> fileprocessor.v1.ThumbnailDetail
+	3,  // 13: fileprocessor.v1.OperationResult.destination:type_name -> fileprocessor.v1.FileRef
+	3,  // 14: fileprocessor.v1.ThumbnailPage.file:type_name -> fileprocessor.v1.FileRef
+	16, // 15: fileprocessor.v1.ThumbnailDetail.pages:type_name -> fileprocessor.v1.ThumbnailPage
+	2,  // 16: fileprocessor.v1.GetJobResponse.status:type_name -> fileprocessor.v1.JobStatus
+	20, // 17: fileprocessor.v1.GetJobResponse.progress:type_name -> fileprocessor.v1.JobProgress
+	36, // 18: fileprocessor.v1.GetJobResponse.results:type_name -> fileprocessor.v1.GetJobResponse.ResultsEntry
+	19, // 19: fileprocessor.v1.ListJobsResponse.jobs:type_name -> fileprocessor.v1.GetJobResponse
+	3,  // 20: fileprocessor.v1.ConvertToPDFRequest.destination:type_name -> fileprocessor.v1.FileRef
+	3,  // 21: fileprocessor.v1.ConvertToPDFResponse.result:type_name -> fileprocessor.v1.FileRef
+	3,  // 22: fileprocessor.v1.MergePDFsRequest.files:type_name -> fileprocessor.v1.FileRef
+	3,  // 23: fileprocessor.v1.MergePDFsRequest.destination:type_name -> fileprocessor.v1.FileRef
+	3,  // 24: fileprocessor.v1.MergePDFsResponse.result:type_name -> fileprocessor.v1.FileRef
+	3,  // 25: fileprocessor.v1.GenerateThumbnailRequest.destination:type_name -> fileprocessor.v1.FileRef
+	0,  // 26: fileprocessor.v1.GenerateThumbnailRequest.format:type_name -> fileprocessor.v1.ImageFormat
+	1,  // 27: fileprocessor.v1.GenerateThumbnailRequest.pages:type_name -> fileprocessor.v1.PageSelection
+	3,  // 28: fileprocessor.v1.GenerateThumbnailResponse.result:type_name -> fileprocessor.v1.FileRef
+	16, // 29: fileprocessor.v1.GenerateThumbnailResponse.results:type_name -> fileprocessor.v1.ThumbnailPage
+	3,  // 30: fileprocessor.v1.ExtractMarkdownRequest.docling_json_destination:type_name -> fileprocessor.v1.FileRef
+	3,  // 31: fileprocessor.v1.ExtractMarkdownResponse.docling_json:type_name -> fileprocessor.v1.FileRef
+	3,  // 32: fileprocessor.v1.ProcessRequest.DestinationsEntry.value:type_name -> fileprocessor.v1.FileRef
+	13, // 33: fileprocessor.v1.GetJobResponse.ResultsEntry.value:type_name -> fileprocessor.v1.OperationResult
+	4,  // 34: fileprocessor.v1.FileProcessorService.Process:input_type -> fileprocessor.v1.ProcessRequest
+	18, // 35: fileprocessor.v1.FileProcessorService.GetJob:input_type -> fileprocessor.v1.GetJobRequest
+	21, // 36: fileprocessor.v1.FileProcessorService.ListJobs:input_type -> fileprocessor.v1.ListJobsRequest
+	23, // 37: fileprocessor.v1.FileProcessorService.CancelJob:input_type -> fileprocessor.v1.CancelJobRequest
+	25, // 38: fileprocessor.v1.FileProcessorService.ScanFile:input_type -> fileprocessor.v1.ScanFileRequest
+	27, // 39: fileprocessor.v1.FileProcessorService.ConvertToPDF:input_type -> fileprocessor.v1.ConvertToPDFRequest
+	29, // 40: fileprocessor.v1.FileProcessorService.MergePDFs:input_type -> fileprocessor.v1.MergePDFsRequest
+	31, // 41: fileprocessor.v1.FileProcessorService.GenerateThumbnail:input_type -> fileprocessor.v1.GenerateThumbnailRequest
+	33, // 42: fileprocessor.v1.FileProcessorService.ExtractMarkdown:input_type -> fileprocessor.v1.ExtractMarkdownRequest
+	12, // 43: fileprocessor.v1.FileProcessorService.Process:output_type -> fileprocessor.v1.ProcessResponse
+	19, // 44: fileprocessor.v1.FileProcessorService.GetJob:output_type -> fileprocessor.v1.GetJobResponse
+	22, // 45: fileprocessor.v1.FileProcessorService.ListJobs:output_type -> fileprocessor.v1.ListJobsResponse
+	24, // 46: fileprocessor.v1.FileProcessorService.CancelJob:output_type -> fileprocessor.v1.CancelJobResponse
+	26, // 47: fileprocessor.v1.FileProcessorService.ScanFile:output_type -> fileprocessor.v1.ScanFileResponse
+	28, // 48: fileprocessor.v1.FileProcessorService.ConvertToPDF:output_type -> fileprocessor.v1.ConvertToPDFResponse
+	30, // 49: fileprocessor.v1.FileProcessorService.MergePDFs:output_type -> fileprocessor.v1.MergePDFsResponse
+	32, // 50: fileprocessor.v1.FileProcessorService.GenerateThumbnail:output_type -> fileprocessor.v1.GenerateThumbnailResponse
+	34, // 51: fileprocessor.v1.FileProcessorService.ExtractMarkdown:output_type -> fileprocessor.v1.ExtractMarkdownResponse
+	43, // [43:52] is the sub-list for method output_type
+	34, // [34:43] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_fileprocessor_v1_fileprocessor_proto_init() }
@@ -1924,8 +2424,8 @@ func file_fileprocessor_v1_fileprocessor_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_fileprocessor_v1_fileprocessor_proto_rawDesc), len(file_fileprocessor_v1_fileprocessor_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   27,
+			NumEnums:      3,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -3,6 +3,7 @@ package fileprocesor
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -145,9 +146,18 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (o
 				errDetail = err.Error()
 			}
 
+			// Serialize results into job for retrieval via GetJob.
+			var resultsJSON json.RawMessage
+			if output.Results != nil {
+				if b, jsonErr := json.Marshal(output); jsonErr == nil {
+					resultsJSON = b
+				}
+			}
+
 			finalizeErr := dbosutil.FinalizeStep(ctx, p.jobs, jobID, jobs.FinalizeParams{
-				Status: status,
-				Error:  errDetail,
+				Status:  status,
+				Error:   errDetail,
+				Results: resultsJSON,
 			})
 			if finalizeErr != nil {
 				slog.Error("finalize job failed", "job_id", jobID, "error", finalizeErr)

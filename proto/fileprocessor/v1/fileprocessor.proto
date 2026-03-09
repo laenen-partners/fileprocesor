@@ -3,7 +3,21 @@ package fileprocessor.v1;
 option go_package = "github.com/laenen-partners/fileprocesor/gen/fileprocessor/v1;fileprocessorv1";
 
 service FileProcessorService {
+  // Process submits a multi-step file processing pipeline. Returns immediately
+  // with a job_id; poll GetJob to track progress and retrieve results.
   rpc Process(ProcessRequest) returns (ProcessResponse);
+
+  // GetJob returns the current state of a processing job including status,
+  // progress, and results (once completed).
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
+
+  // ListJobs returns jobs matching the given filters.
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+
+  // CancelJob marks a running job as cancelled.
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+
+  // Standalone RPCs — synchronous, single-step operations.
   rpc ScanFile(ScanFileRequest) returns (ScanFileResponse);
   rpc ConvertToPDF(ConvertToPDFRequest) returns (ConvertToPDFResponse);
   rpc MergePDFs(MergePDFsRequest) returns (MergePDFsResponse);
@@ -24,6 +38,15 @@ enum PageSelection {
   PAGE_SELECTION_UNSPECIFIED = 0; // defaults to FIRST
   PAGE_SELECTION_FIRST = 1;
   PAGE_SELECTION_ALL = 2;
+}
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_PENDING = 1;
+  JOB_STATUS_RUNNING = 2;
+  JOB_STATUS_COMPLETED = 3;
+  JOB_STATUS_FAILED = 4;
+  JOB_STATUS_CANCELLED = 5;
 }
 
 // --- Shared ---
@@ -76,9 +99,10 @@ message ThumbnailOp {
 }
 message ExtractMarkdownOp {}
 
+// ProcessResponse is returned immediately when a pipeline is submitted.
 message ProcessResponse {
-  string workflow_id = 1;
-  map<string, OperationResult> results = 2;
+  string job_id = 1;       // Job entity ID — use with GetJob to poll status.
+  string workflow_id = 2;  // DBOS workflow ID.
 }
 
 message OperationResult {
@@ -112,6 +136,46 @@ message ThumbnailPage {
 message ThumbnailDetail {
   repeated ThumbnailPage pages = 1;
 }
+
+// --- Job RPCs ---
+
+message GetJobRequest {
+  string job_id = 1;
+}
+
+message GetJobResponse {
+  string job_id = 1;
+  string workflow_id = 2;
+  JobStatus status = 3;
+  JobProgress progress = 4;
+  string error = 5;
+  // Results are populated once the job reaches COMPLETED status.
+  map<string, OperationResult> results = 6;
+}
+
+message JobProgress {
+  string step = 1;      // Current step name (e.g. "downloading", operation name, "uploading").
+  int32 current = 2;    // Current item within the step.
+  int32 total = 3;      // Total items in the step.
+  string message = 4;   // Optional human-readable message.
+}
+
+message ListJobsRequest {
+  string owner_id = 1;      // Filter by job owner.
+  string status = 2;        // Filter by status (pending, running, completed, failed, cancelled).
+  int32 limit = 3;          // Max results (default 100).
+  int32 offset = 4;         // Pagination offset.
+}
+
+message ListJobsResponse {
+  repeated GetJobResponse jobs = 1;
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobResponse {}
 
 // --- Standalone RPCs ---
 // Maximum file size per request is controlled by the server (default 256 MB,
