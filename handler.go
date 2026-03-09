@@ -347,10 +347,10 @@ func jobToProto(j *jobs.Job) *fpv1.GetJobResponse {
 		}
 	}
 
-	// Unmarshal results from job Results JSON.
-	if len(j.Results) > 0 {
+	// Unmarshal results from job Output JSON.
+	if len(j.Output) > 0 {
 		var output ProcessOutput
-		if err := json.Unmarshal(j.Results, &output); err == nil && output.Results != nil {
+		if err := json.Unmarshal(j.Output, &output); err == nil && output.Results != nil {
 			resp.Results = make(map[string]*fpv1.OperationResult)
 			for name, r := range output.Results {
 				resp.Results[name] = operationResultToProto(r)

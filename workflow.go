@@ -157,7 +157,7 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (o
 			finalizeErr := dbosutil.FinalizeStep(ctx, p.jobs, jobID, jobs.FinalizeParams{
 				Status:  status,
 				Error:   errDetail,
-				Results: resultsJSON,
+				Output: resultsJSON,
 			})
 			if finalizeErr != nil {
 				slog.Error("finalize job failed", "job_id", jobID, "error", finalizeErr)
