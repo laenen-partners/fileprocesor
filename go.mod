@@ -6,10 +6,10 @@ require (
 	connectrpc.com/connect v1.19.1
 	github.com/dbos-inc/dbos-transact-golang v0.11.0
 	github.com/google/uuid v1.6.0
-	github.com/laenen-partners/entitystore v0.0.0
+	github.com/laenen-partners/entitystore v0.1.0
 	github.com/laenen-partners/jobs v0.0.0
 	github.com/laenen-partners/jobs/dbosutil v0.0.0
-	github.com/laenen-partners/objectstore v0.0.0
+	github.com/laenen-partners/objectstore v0.1.0
 	github.com/pdfcpu/pdfcpu v0.11.1
 	google.golang.org/protobuf v1.36.11
 )
@@ -57,8 +57,6 @@ require (
 )
 
 replace (
-	github.com/laenen-partners/entitystore => ../entitystore
 	github.com/laenen-partners/jobs => ../jobs
 	github.com/laenen-partners/jobs/dbosutil => ../jobs/dbosutil
-	github.com/laenen-partners/objectstore => ../objectstore
 )
