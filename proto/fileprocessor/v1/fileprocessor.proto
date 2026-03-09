@@ -29,8 +29,8 @@ enum PageSelection {
 // --- Shared ---
 
 message FileRef {
-  string bucket = 1;
-  string key = 2;
+  string bucket = 1;   // Bucket name (must be in server's ALLOWED_BUCKETS if configured).
+  string key = 2;      // Object key (path traversal sequences are rejected).
   string content_type = 3;
 }
 
@@ -47,10 +47,10 @@ message ProcessRequest {
 }
 
 message FileInput {
-  string name = 1;
-  string bucket = 2;
-  string key = 3;
-  string content_type = 4;
+  string name = 1;          // Unique name within the pipeline, used to reference this input in operations.
+  string bucket = 2;        // Bucket name (must be in server's ALLOWED_BUCKETS if configured).
+  string key = 3;           // Object key (path traversal sequences are rejected).
+  string content_type = 4;  // MIME type of the input file.
 }
 
 message Operation {
@@ -114,7 +114,9 @@ message ThumbnailDetail {
 }
 
 // --- Standalone RPCs ---
-// Maximum file size is controlled by the server (default 256 MB, configurable via MAX_FILE_SIZE_BYTES).
+// Maximum file size per request is controlled by the server (default 256 MB,
+// configurable via MAX_FILE_SIZE_BYTES). Backend response bodies are capped at
+// 512 MB (Gotenberg, Docling) or 256 MB (pdf2img).
 
 message ScanFileRequest { string bucket = 1; string key = 2; }
 message ScanFileResponse { bool clean = 1; string detail = 2; }

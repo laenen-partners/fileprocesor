@@ -49,7 +49,7 @@ Since the initial review, **all P0 and P1 items have been resolved**. This inclu
 | 16 | **Partial results missing on scan failure** | High | `workflow.go:186-189` breaks the loop on scan failure but skipped operations have no result entries. Callers cannot distinguish "skipped due to scan failure" from "never attempted". | |
 | 17 | **No observability** | Medium | No metrics (Prometheus), no tracing (OpenTelemetry), no structured request logging. Backend HTTP calls have no timeout or retry configuration. | |
 | 18 | **HTTP clients have no timeouts** | Medium | All backend clients (`gotenberg.Client`, `docling.Client`, `pdf2img.Client`) use `&http.Client{}` with zero timeout. A slow Gotenberg or Docling can hang the workflow indefinitely. | DONE |
-| 19 | **`fproc` binary checked into repo** | Low | The `fproc` directory appears to be a built binary committed to the repo. Should be in `.gitignore`. | |
+| 19 | **`fproc` binary checked into repo** | Low | The `fproc` directory appears to be a built binary committed to the repo. Should be in `.gitignore`. | DONE |
 | 20 | **Tiltfile is bare** | Low | No Go live reload configured. Development iteration requires manual restarts. | |
 
 ---
@@ -72,7 +72,7 @@ Since the initial review, **all P0 and P1 items have been resolved**. This inclu
 | 3 | **No content-type validation** | Reliability | `ConvertToPDF` accepts any `content_type` without validation. Gotenberg will fail with a cryptic error. The RPC should validate early and return a clear error. | DONE |
 | 4 | **`ScanDetail.VirusName` is misnamed** | Clarity | Field is populated with the general `Detail` string from ClamAV, which may contain error messages, not just virus names. Field naming is misleading. | DONE |
 | 5 | **Deprecated `result` field on `GenerateThumbnailResponse`** | Clarity | Both `result` and `results` are populated. The singular field should be removed or deprecated in proto to avoid confusion. | DONE |
-| 6 | **File size limits undocumented in proto** | Reliability | Proto definitions don't document maximum file sizes or other constraints. Callers have no way to know limits without trial and error. | |
+| 6 | **File size limits undocumented in proto** | Reliability | Proto definitions don't document maximum file sizes or other constraints. Callers have no way to know limits without trial and error. | DONE |
 | 7 | **`max_concurrency` is misleading** | Usability | Field exists in proto but is dead code. Callers may set it expecting parallel operation execution but operations always run sequentially. | DONE |
 | 8 | **No batch processing RPC** | Feature gap | No way to process multiple documents in a single call (e.g., "convert these 50 files to PDF"). Each requires a separate `Process` or `ConvertToPDF` call. | |
 
@@ -110,7 +110,7 @@ Since the initial review, **all P0 and P1 items have been resolved**. This inclu
 | 19 | **No audit logging of file access in workflow steps** | Medium | Individual workflow steps (download, scan, convert, upload) do not log which files are accessed or produced. Essential for forensics and compliance. | DONE |
 | 20 | **No `.gitignore` for secrets** | Medium | `.env`, `*.key`, `*.pem` are not excluded from version control. Risk of accidental secret commits. | |
 | 21 | **Workflow data not cleaned up** | Low | In-memory `data` map accumulates all downloaded and generated files across the workflow. For large pipelines, this can hold gigabytes. Should clear entries after they're no longer needed. | DONE |
-| 22 | **Default credentials in Docker Compose** | Low | `postgres:postgres` is acceptable for local dev but should be documented as unsafe for production. | |
+| 22 | **Default credentials in Docker Compose** | Low | `postgres:postgres` is acceptable for local dev but should be documented as unsafe for production. | DONE |
 
 ---
 
@@ -145,7 +145,7 @@ Since the initial review, **all P0 and P1 items have been resolved**. This inclu
 | **P1** | Add content-type validation on `ConvertToPDF` and other RPCs | CPO | Small | DONE |
 | **P1** | Rename `ScanDetail.VirusName` or split into separate fields for virus name and error detail | CPO | Small | DONE |
 | **P1** | Deprecate singular `result` field on `GenerateThumbnailResponse` | CPO | Small | DONE |
-| **P1** | Document file size limits in proto definitions | CPO | Small | |
+| **P1** | Document file size limits in proto definitions | CPO | Small | DONE |
 | **P1** | Fix `X-Forwarded-For` spoofing in rate limiter — use direct connection IP or trusted proxy config | CISO | Small | DONE |
 | **P1** | Tighten ClamAV response parsing — strict protocol format matching instead of `HasSuffix "OK"` | CISO | Small | DONE |
 | **P1** | Add audit logging of file access in workflow steps | CISO | Medium | DONE |
