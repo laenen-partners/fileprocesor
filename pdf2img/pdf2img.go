@@ -10,9 +10,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 )
+
+// maxResponseSize is the maximum size of a pdf2img response body (256 MB).
+const maxResponseSize = 256 << 20
 
 // ConvertOpts configures a single-page conversion.
 type ConvertOpts struct {
@@ -74,7 +78,7 @@ type Client struct {
 func New(baseURL string) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 2 * time.Minute},
 	}
 }
 
@@ -130,7 +134,7 @@ func (c *Client) ConvertPage(ctx context.Context, pdfData []byte, opts ConvertOp
 		}
 	}()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
@@ -148,7 +152,7 @@ func (c *Client) ConvertPage(ctx context.Context, pdfData []byte, opts ConvertOp
 
 func (c *Client) PageCount(_ context.Context, pdfData []byte) (int, error) {
 	r := bytes.NewReader(pdfData)
-	n, err := api.PageCountBytes(r)
+	n, err := api.PageCount(r, nil)
 	if err != nil {
 		return 0, fmt.Errorf("count pages: %w", err)
 	}

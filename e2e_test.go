@@ -3,11 +3,16 @@ package fileprocesor_test
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -16,6 +21,7 @@ import (
 
 	fileprocesor "github.com/laenen-partners/fileprocesor"
 	"github.com/laenen-partners/objectstore"
+	"github.com/laenen-partners/objectstore/tokenstore"
 
 	objv1 "github.com/laenen-partners/objectstore/gen/objectstore/v1"
 	"github.com/laenen-partners/objectstore/gen/objectstore/v1/objectstorev1connect"
@@ -42,10 +48,10 @@ func startE2E(t *testing.T) (
 	// --- ObjectStore (local filesystem) ---
 	dir := t.TempDir()
 	objCfg := objectstore.Config{
-		Backend:  "file",
-		BasePath: dir,
-		BaseURL:  "PLACEHOLDER",
-		Secret:   "test-secret",
+		Backend:        "file",
+		BasePath:       dir,
+		BaseURL:        "PLACEHOLDER",
+		TokenValidator: newTestTokenValidator("test-secret"),
 	}
 
 	mux := http.NewServeMux()
@@ -67,10 +73,11 @@ func startE2E(t *testing.T) (
 		ClamAVAddr:   "", // AV disabled
 	}
 
-	fpHandler, err := fileprocesor.New(fpCfg, store)
+	fpHandler, closer, err := fileprocesor.New(fpCfg, store)
 	if err != nil {
 		t.Fatalf("fileprocesor.New: %v", err)
 	}
+	t.Cleanup(closer)
 
 	mux.Handle("/", objHandler)
 	mux.Handle("/fileprocessor.v1.FileProcessorService/", fpHandler)
@@ -356,6 +363,45 @@ func TestE2E_ExtractMarkdown(t *testing.T) {
 	if len(jsonData) == 0 {
 		t.Error("docling JSON file is empty")
 	}
+}
+
+// testTokenValidator is a minimal HMAC-based token validator for e2e tests.
+type testTokenValidator struct {
+	secret []byte
+}
+
+func newTestTokenValidator(secret string) *testTokenValidator {
+	return &testTokenValidator{secret: []byte(secret)}
+}
+
+func (v *testTokenValidator) Issue(_ context.Context, req tokenstore.IssueRequest) (*tokenstore.Token, error) {
+	expires := time.Now().Add(time.Hour).Unix()
+	msg := fmt.Sprintf("%s:%s:%s:%d", req.Method, req.Bucket, req.Key, expires)
+	mac := hmac.New(sha256.New, v.secret)
+	mac.Write([]byte(msg))
+	tok := hex.EncodeToString(mac.Sum(nil))
+	return &tokenstore.Token{
+		Token:     tok,
+		ExpiresAt: expires,
+	}, nil
+}
+
+func (v *testTokenValidator) Validate(_ context.Context, method, bucket, key string, expiresAt int64, token string) (*tokenstore.Claims, error) {
+	if expiresAt < time.Now().Unix() {
+		return nil, fmt.Errorf("token expired")
+	}
+	msg := fmt.Sprintf("%s:%s:%s:%d", method, bucket, key, expiresAt)
+	mac := hmac.New(sha256.New, v.secret)
+	mac.Write([]byte(msg))
+	expected := hex.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(token), []byte(expected)) {
+		return nil, fmt.Errorf("invalid token")
+	}
+	return &tokenstore.Claims{}, nil
+}
+
+func (v *testTokenValidator) Revoke(_ context.Context, _ string) error {
+	return nil
 }
 
 func TestE2E_ProcessWorkflow(t *testing.T) {

@@ -23,7 +23,18 @@ type Handler struct {
 }
 
 func (h *Handler) Process(ctx context.Context, req *connect.Request[fpv1.ProcessRequest]) (*connect.Response[fpv1.ProcessResponse], error) {
+	if err := h.proc.validateProcessRequest(req.Msg); err != nil {
+		return nil, err
+	}
+
 	input := toProcessInput(req.Msg)
+
+	// Propagate caller identity into workflow input.
+	caller := CallerFromContext(ctx)
+	if input.OwnerID == "" && caller.UserID != "" {
+		input.OwnerID = caller.UserID
+	}
+
 	wfID := uuid.NewString()
 	handle, err := dbos.RunWorkflow(h.proc.dbosCtx, h.proc.ProcessWorkflow, input,
 		dbos.WithWorkflowID(wfID))
@@ -38,8 +49,11 @@ func (h *Handler) Process(ctx context.Context, req *connect.Request[fpv1.Process
 }
 
 func (h *Handler) ScanFile(ctx context.Context, req *connect.Request[fpv1.ScanFileRequest]) (*connect.Response[fpv1.ScanFileResponse], error) {
+	if err := h.proc.validateFileRef(req.Msg.Bucket, req.Msg.Key); err != nil {
+		return nil, err
+	}
 	if h.proc.scanner == nil {
-		return connect.NewResponse(&fpv1.ScanFileResponse{Clean: true, Detail: "scanning disabled"}), nil
+		return connect.NewResponse(&fpv1.ScanFileResponse{Clean: false, Detail: "scanning disabled: no antivirus configured"}), nil
 	}
 
 	data, err := h.proc.downloadFile(ctx, req.Msg.Bucket, req.Msg.Key)
@@ -57,6 +71,15 @@ func (h *Handler) ScanFile(ctx context.Context, req *connect.Request[fpv1.ScanFi
 }
 
 func (h *Handler) ConvertToPDF(ctx context.Context, req *connect.Request[fpv1.ConvertToPDFRequest]) (*connect.Response[fpv1.ConvertToPDFResponse], error) {
+	if err := h.proc.validateFileRef(req.Msg.Bucket, req.Msg.Key); err != nil {
+		return nil, err
+	}
+	if req.Msg.ContentType == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("content_type is required for conversion routing"))
+	}
+	if err := h.proc.validateFileRefMsg(req.Msg.Destination, "destination"); err != nil {
+		return nil, err
+	}
 	data, err := h.proc.downloadFile(ctx, req.Msg.Bucket, req.Msg.Key)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -77,6 +100,17 @@ func (h *Handler) ConvertToPDF(ctx context.Context, req *connect.Request[fpv1.Co
 }
 
 func (h *Handler) MergePDFs(ctx context.Context, req *connect.Request[fpv1.MergePDFsRequest]) (*connect.Response[fpv1.MergePDFsResponse], error) {
+	if len(req.Msg.Files) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("at least one file is required"))
+	}
+	for _, f := range req.Msg.Files {
+		if err := h.proc.validateFileRef(f.Bucket, f.Key); err != nil {
+			return nil, err
+		}
+	}
+	if err := h.proc.validateFileRefMsg(req.Msg.Destination, "destination"); err != nil {
+		return nil, err
+	}
 	pdfs := make([]gotenberg.NamedPDF, 0, len(req.Msg.Files))
 	for _, f := range req.Msg.Files {
 		data, err := h.proc.downloadFile(ctx, f.Bucket, f.Key)
@@ -101,6 +135,12 @@ func (h *Handler) MergePDFs(ctx context.Context, req *connect.Request[fpv1.Merge
 }
 
 func (h *Handler) GenerateThumbnail(ctx context.Context, req *connect.Request[fpv1.GenerateThumbnailRequest]) (*connect.Response[fpv1.GenerateThumbnailResponse], error) {
+	if err := h.proc.validateFileRef(req.Msg.Bucket, req.Msg.Key); err != nil {
+		return nil, err
+	}
+	if err := h.proc.validateFileRefMsg(req.Msg.Destination, "destination"); err != nil {
+		return nil, err
+	}
 	data, err := h.proc.downloadFile(ctx, req.Msg.Bucket, req.Msg.Key)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -177,6 +217,12 @@ func (h *Handler) GenerateThumbnail(ctx context.Context, req *connect.Request[fp
 }
 
 func (h *Handler) ExtractMarkdown(ctx context.Context, req *connect.Request[fpv1.ExtractMarkdownRequest]) (*connect.Response[fpv1.ExtractMarkdownResponse], error) {
+	if err := h.proc.validateFileRef(req.Msg.Bucket, req.Msg.Key); err != nil {
+		return nil, err
+	}
+	if err := h.proc.validateFileRefMsg(req.Msg.DoclingJsonDestination, "docling_json_destination"); err != nil {
+		return nil, err
+	}
 	data, err := h.proc.downloadFile(ctx, req.Msg.Bucket, req.Msg.Key)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -269,7 +315,7 @@ func toProtoResponse(workflowID string, output ProcessOutput) *fpv1.ProcessRespo
 			or.Detail = &fpv1.OperationResult_Scan{
 				Scan: &fpv1.ScanDetail{
 					Clean:     r.ScanDetail.Clean,
-					VirusName: r.ScanDetail.VirusName,
+					Detail: r.ScanDetail.Detail,
 				},
 			}
 		}

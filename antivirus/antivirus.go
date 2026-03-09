@@ -97,20 +97,26 @@ func (s *ClamAVScanner) Scan(ctx context.Context, data []byte) (ScanResult, erro
 
 func parseResponse(response string) ScanResult {
 	response = strings.TrimSpace(response)
+	// Strip null terminator if present (clamd protocol).
+	response = strings.TrimRight(response, "\x00")
 
 	slog.Info("antivirus: ClamAV response", "response", response)
 
+	// ClamAV INSTREAM protocol responses:
+	//   "stream: OK"              — file is clean
+	//   "stream: <name> FOUND"    — threat detected
+	//   "stream: <error> ERROR"   — scan error
+
 	switch {
-	case strings.HasSuffix(response, "OK"):
+	case response == "stream: OK":
 		return ScanResult{Clean: true}
 
-	case strings.HasSuffix(response, "FOUND"):
-		// Response format: "stream: <virus_name> FOUND"
+	case strings.HasPrefix(response, "stream: ") && strings.HasSuffix(response, " FOUND"):
 		detail := strings.TrimPrefix(response, "stream: ")
 		detail = strings.TrimSuffix(detail, " FOUND")
 		return ScanResult{Clean: false, Detail: detail}
 
 	default:
-		return ScanResult{Clean: false, Detail: fmt.Sprintf("scan error: %s", response)}
+		return ScanResult{Clean: false, Detail: fmt.Sprintf("unexpected scan response: %s", response)}
 	}
 }

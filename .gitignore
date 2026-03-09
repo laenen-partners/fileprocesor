@@ -18,6 +18,12 @@ go.work.sum
 
 # Environment
 .env
+.env.*.local
+
+# Secrets
+*.key
+*.pem
+credentials.json
 
 # IDE
 .idea/
@@ -32,3 +38,7 @@ Thumbs.db
 
 # Air (live reload)
 tmp/
+
+# Coverage
+coverage.out
+coverage.html

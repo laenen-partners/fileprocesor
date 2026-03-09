@@ -182,14 +182,15 @@ func (x *FileRef) GetContentType() string {
 	return ""
 }
 
+// ProcessRequest defines a multi-step file processing pipeline.
+// Maximum input file size is controlled by the server (default 256 MB).
 type ProcessRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Inputs         []*FileInput           `protobuf:"bytes,1,rep,name=inputs,proto3" json:"inputs,omitempty"`
-	Operations     []*Operation           `protobuf:"bytes,2,rep,name=operations,proto3" json:"operations,omitempty"`
-	Destinations   map[string]*FileRef    `protobuf:"bytes,3,rep,name=destinations,proto3" json:"destinations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	MaxConcurrency int32                  `protobuf:"varint,4,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Inputs        []*FileInput           `protobuf:"bytes,1,rep,name=inputs,proto3" json:"inputs,omitempty"`
+	Operations    []*Operation           `protobuf:"bytes,2,rep,name=operations,proto3" json:"operations,omitempty"`
+	Destinations  map[string]*FileRef    `protobuf:"bytes,3,rep,name=destinations,proto3" json:"destinations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ProcessRequest) Reset() {
@@ -241,13 +242,6 @@ func (x *ProcessRequest) GetDestinations() map[string]*FileRef {
 		return x.Destinations
 	}
 	return nil
-}
-
-func (x *ProcessRequest) GetMaxConcurrency() int32 {
-	if x != nil {
-		return x.MaxConcurrency
-	}
-	return 0
 }
 
 type FileInput struct {
@@ -859,9 +853,11 @@ func (*OperationResult_Markdown) isOperationResult_Detail() {}
 func (*OperationResult_Thumbnail) isOperationResult_Detail() {}
 
 type ScanDetail struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Clean         bool                   `protobuf:"varint,1,opt,name=clean,proto3" json:"clean,omitempty"`
-	VirusName     string                 `protobuf:"bytes,2,opt,name=virus_name,json=virusName,proto3" json:"virus_name,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Clean bool                   `protobuf:"varint,1,opt,name=clean,proto3" json:"clean,omitempty"`
+	// Detail from the antivirus scanner: virus name when a threat is detected,
+	// or error message on scanner failure. Empty when clean.
+	Detail        string `protobuf:"bytes,3,opt,name=detail,proto3" json:"detail,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -903,9 +899,9 @@ func (x *ScanDetail) GetClean() bool {
 	return false
 }
 
-func (x *ScanDetail) GetVirusName() string {
+func (x *ScanDetail) GetDetail() string {
 	if x != nil {
-		return x.VirusName
+		return x.Detail
 	}
 	return ""
 }
@@ -1170,6 +1166,8 @@ func (x *ScanFileResponse) GetDetail() string {
 	return ""
 }
 
+// ConvertToPDFRequest converts a document to PDF.
+// content_type should match the actual file type for correct backend routing.
 type ConvertToPDFRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Bucket        string                 `protobuf:"bytes,1,opt,name=bucket,proto3" json:"bucket,omitempty"`
@@ -1487,10 +1485,14 @@ func (x *GenerateThumbnailRequest) GetPages() PageSelection {
 }
 
 type GenerateThumbnailResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Result        *FileRef               `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
-	SizeBytes     int64                  `protobuf:"varint,2,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
-	Results       []*ThumbnailPage       `protobuf:"bytes,3,rep,name=results,proto3" json:"results,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Deprecated: use results instead. Populated with first page for backwards compatibility.
+	//
+	// Deprecated: Marked as deprecated in fileprocessor/v1/fileprocessor.proto.
+	Result    *FileRef `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	SizeBytes int64    `protobuf:"varint,2,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	// Per-page results. Always populated (single element for PAGE_SELECTION_FIRST).
+	Results       []*ThumbnailPage `protobuf:"bytes,3,rep,name=results,proto3" json:"results,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1525,6 +1527,7 @@ func (*GenerateThumbnailResponse) Descriptor() ([]byte, []int) {
 	return file_fileprocessor_v1_fileprocessor_proto_rawDescGZIP(), []int{22}
 }
 
+// Deprecated: Marked as deprecated in fileprocessor/v1/fileprocessor.proto.
 func (x *GenerateThumbnailResponse) GetResult() *FileRef {
 	if x != nil {
 		return x.Result
@@ -1674,17 +1677,16 @@ const file_fileprocessor_v1_fileprocessor_proto_rawDesc = "" +
 	"\aFileRef\x12\x16\n" +
 	"\x06bucket\x18\x01 \x01(\tR\x06bucket\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12!\n" +
-	"\fcontent_type\x18\x03 \x01(\tR\vcontentType\"\xdf\x02\n" +
+	"\fcontent_type\x18\x03 \x01(\tR\vcontentType\"\xcd\x02\n" +
 	"\x0eProcessRequest\x123\n" +
 	"\x06inputs\x18\x01 \x03(\v2\x1b.fileprocessor.v1.FileInputR\x06inputs\x12;\n" +
 	"\n" +
 	"operations\x18\x02 \x03(\v2\x1b.fileprocessor.v1.OperationR\n" +
 	"operations\x12V\n" +
-	"\fdestinations\x18\x03 \x03(\v22.fileprocessor.v1.ProcessRequest.DestinationsEntryR\fdestinations\x12'\n" +
-	"\x0fmax_concurrency\x18\x04 \x01(\x05R\x0emaxConcurrency\x1aZ\n" +
+	"\fdestinations\x18\x03 \x03(\v22.fileprocessor.v1.ProcessRequest.DestinationsEntryR\fdestinations\x1aZ\n" +
 	"\x11DestinationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
-	"\x05value\x18\x02 \x01(\v2\x19.fileprocessor.v1.FileRefR\x05value:\x028\x01\"l\n" +
+	"\x05value\x18\x02 \x01(\v2\x19.fileprocessor.v1.FileRefR\x05value:\x028\x01J\x04\b\x04\x10\x05R\x0fmax_concurrency\"l\n" +
 	"\tFileInput\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06bucket\x18\x02 \x01(\tR\x06bucket\x12\x10\n" +
@@ -1727,12 +1729,12 @@ const file_fileprocessor_v1_fileprocessor_proto_rawDesc = "" +
 	"\vdestination\x18\x14 \x01(\v2\x19.fileprocessor.v1.FileRefR\vdestination\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\x15 \x01(\x03R\tsizeBytesB\b\n" +
-	"\x06detail\"A\n" +
+	"\x06detail\"L\n" +
 	"\n" +
 	"ScanDetail\x12\x14\n" +
-	"\x05clean\x18\x01 \x01(\bR\x05clean\x12\x1d\n" +
-	"\n" +
-	"virus_name\x18\x02 \x01(\tR\tvirusName\"@\n" +
+	"\x05clean\x18\x01 \x01(\bR\x05clean\x12\x16\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detailJ\x04\b\x02\x10\x03R\n" +
+	"virus_name\"@\n" +
 	"\x0eMarkdownDetail\x12\x1a\n" +
 	"\bmarkdown\x18\x01 \x01(\tR\bmarkdown\x12\x12\n" +
 	"\x04html\x18\x02 \x01(\tR\x04html\"~\n" +
@@ -1773,9 +1775,9 @@ const file_fileprocessor_v1_fileprocessor_proto_rawDesc = "" +
 	"\x05width\x18\x04 \x01(\x05R\x05width\x12\x10\n" +
 	"\x03dpi\x18\x05 \x01(\x05R\x03dpi\x125\n" +
 	"\x06format\x18\x06 \x01(\x0e2\x1d.fileprocessor.v1.ImageFormatR\x06format\x125\n" +
-	"\x05pages\x18\a \x01(\x0e2\x1f.fileprocessor.v1.PageSelectionR\x05pages\"\xa8\x01\n" +
-	"\x19GenerateThumbnailResponse\x121\n" +
-	"\x06result\x18\x01 \x01(\v2\x19.fileprocessor.v1.FileRefR\x06result\x12\x1d\n" +
+	"\x05pages\x18\a \x01(\x0e2\x1f.fileprocessor.v1.PageSelectionR\x05pages\"\xac\x01\n" +
+	"\x19GenerateThumbnailResponse\x125\n" +
+	"\x06result\x18\x01 \x01(\v2\x19.fileprocessor.v1.FileRefB\x02\x18\x01R\x06result\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\x02 \x01(\x03R\tsizeBytes\x129\n" +
 	"\aresults\x18\x03 \x03(\v2\x1f.fileprocessor.v1.ThumbnailPageR\aresults\"\x97\x01\n" +

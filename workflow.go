@@ -15,24 +15,34 @@ import (
 	"github.com/laenen-partners/fileprocesor/docling"
 	"github.com/laenen-partners/fileprocesor/gotenberg"
 	"github.com/laenen-partners/fileprocesor/pdf2img"
+	"github.com/laenen-partners/jobs"
+	"github.com/laenen-partners/jobs/dbosutil"
 	"github.com/laenen-partners/objectstore"
 )
 
 // Processor holds the service dependencies, shared across workflows.
 type Processor struct {
-	store     objectstore.Store
-	scanner   antivirus.Scanner
-	gotenberg gotenberg.Converter
-	docling   docling.Converter
-	pdf2img   pdf2img.Converter
-	dbosCtx   dbos.DBOSContext
+	store          objectstore.Store
+	scanner        antivirus.Scanner
+	gotenberg      gotenberg.Converter
+	docling        docling.Converter
+	pdf2img        pdf2img.Converter
+	jobs           *jobs.Client
+	dbosCtx        dbos.DBOSContext
+	maxFileSize    int64
+	allowedBuckets map[string]bool // nil = allow all
 }
 
 // ProcessInput is the workflow input, serialized from ProcessRequest.
 type ProcessInput struct {
-	Inputs       []FileInputDef            `json:"inputs"`
-	Operations   []OperationDef            `json:"operations"`
-	Destinations map[string]FileRefDef     `json:"destinations"`
+	Inputs       []FileInputDef        `json:"inputs"`
+	Operations   []OperationDef        `json:"operations"`
+	Destinations map[string]FileRefDef `json:"destinations"`
+
+	// Job metadata (set by handler when jobs client is available).
+	OwnerID string `json:"owner_id,omitempty"`
+	TeamID  string `json:"team_id,omitempty"`
+	InboxID string `json:"inbox_id,omitempty"`
 }
 
 type FileInputDef struct {
@@ -49,13 +59,13 @@ type FileRefDef struct {
 }
 
 type OperationDef struct {
-	Name            string           `json:"name"`
-	Inputs          []string         `json:"inputs"`
-	Scan            *ScanOpDef       `json:"scan,omitempty"`
-	ConvertToPDF    *ConvertOpDef    `json:"convert_to_pdf,omitempty"`
-	MergePDFs       *MergeOpDef      `json:"merge_pdfs,omitempty"`
-	Thumbnail       *ThumbnailOpDef  `json:"thumbnail,omitempty"`
-	ExtractMarkdown *MarkdownOpDef   `json:"extract_markdown,omitempty"`
+	Name            string          `json:"name"`
+	Inputs          []string        `json:"inputs"`
+	Scan            *ScanOpDef      `json:"scan,omitempty"`
+	ConvertToPDF    *ConvertOpDef   `json:"convert_to_pdf,omitempty"`
+	MergePDFs       *MergeOpDef     `json:"merge_pdfs,omitempty"`
+	Thumbnail       *ThumbnailOpDef `json:"thumbnail,omitempty"`
+	ExtractMarkdown *MarkdownOpDef  `json:"extract_markdown,omitempty"`
 }
 
 type ScanOpDef struct{}
@@ -71,7 +81,7 @@ type MarkdownOpDef struct{}
 
 func (o *OperationDef) IsScan() bool { return o.Scan != nil }
 
-// OperationResult is the workflow output for a single operation.
+// OperationResultDef is the workflow output for a single operation.
 type OperationResultDef struct {
 	Success        bool                 `json:"success"`
 	Error          string               `json:"error,omitempty"`
@@ -83,8 +93,8 @@ type OperationResultDef struct {
 }
 
 type ScanDef struct {
-	Clean     bool   `json:"clean"`
-	VirusName string `json:"virus_name,omitempty"`
+	Clean  bool   `json:"clean"`
+	Detail string `json:"detail,omitempty"`
 }
 
 type MDDef struct {
@@ -104,34 +114,106 @@ type ProcessOutput struct {
 }
 
 // ProcessWorkflow is the DBOS workflow registered at startup.
-func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (ProcessOutput, error) {
+func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (output ProcessOutput, err error) {
+	// Step 0: Publish job entity (if jobs client is available).
+	var jobID string
+	if p.jobs != nil {
+		wfID, _ := dbos.GetWorkflowID(ctx)
+		job, pubErr := dbosutil.PublishStep(ctx, p.jobs, jobs.PublishParams{
+			WorkflowID: wfID,
+			JobType:    "file_processing",
+			OwnerID:    input.OwnerID,
+			TeamID:     input.TeamID,
+			InboxID:    input.InboxID,
+		})
+		if pubErr != nil {
+			return ProcessOutput{}, fmt.Errorf("publish job: %w", pubErr)
+		}
+		jobID = job.ID
+		dbos.SetEvent(ctx, "job_entity_id", jobID)
+
+		// Defer finalize — runs on success, failure, or panic.
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("panic: %v", r)
+			}
+
+			status := jobs.StatusCompleted
+			var errDetail string
+			if err != nil {
+				status = jobs.StatusFailed
+				errDetail = err.Error()
+			}
+
+			finalizeErr := dbosutil.FinalizeStep(ctx, p.jobs, jobID, jobs.FinalizeParams{
+				Status: status,
+				Error:  errDetail,
+			})
+			if finalizeErr != nil {
+				slog.Error("finalize job failed", "job_id", jobID, "error", finalizeErr)
+			}
+		}()
+	}
+
 	// Step 1: Download all inputs.
+	if p.jobs != nil && jobID != "" {
+		dbosutil.ProgressEvent(ctx, jobs.Progress{Step: "downloading", Current: 0, Total: len(input.Inputs)})
+	}
+
 	data := make(map[string][]byte)
-	for _, inp := range input.Inputs {
-		inp := inp
-		fileData, err := dbos.RunAsStep(ctx, func(sctx context.Context) ([]byte, error) {
+	for i, inp := range input.Inputs {
+		slog.Info("workflow: downloading input", "name", inp.Name, "bucket", inp.Bucket, "key", inp.Key, "owner", input.OwnerID)
+		fileData, dlErr := dbos.RunAsStep(ctx, func(sctx context.Context) ([]byte, error) {
 			return p.downloadFile(sctx, inp.Bucket, inp.Key)
 		}, dbos.WithStepName("download_"+inp.Name))
-		if err != nil {
-			return ProcessOutput{}, fmt.Errorf("download %s: %w", inp.Name, err)
+		if dlErr != nil {
+			return ProcessOutput{}, fmt.Errorf("download %s: %w", inp.Name, dlErr)
 		}
+		slog.Info("workflow: downloaded input", "name", inp.Name, "size", len(fileData))
 		data[inp.Name] = fileData
+
+		if p.jobs != nil && jobID != "" {
+			dbosutil.ProgressEvent(ctx, jobs.Progress{Step: "downloading", Current: i + 1, Total: len(input.Inputs)})
+		}
 	}
 
 	// Step 2: Execute operations in order.
+	// Build reference counts so we can free data entries after their last use.
+	refCount := buildRefCounts(input)
+
 	results := make(map[string]*OperationResultDef)
-	for _, op := range input.Operations {
+	scanFailed := false
+	for i, op := range input.Operations {
+		if scanFailed {
+			results[op.Name] = &OperationResultDef{Error: "skipped: prior scan detected a threat"}
+			continue
+		}
+
+		if p.jobs != nil && jobID != "" {
+			dbosutil.ProgressEvent(ctx, jobs.Progress{Step: op.Name, Current: i + 1, Total: len(input.Operations)})
+		}
+
+		slog.Info("workflow: executing operation", "op", op.Name, "inputs", op.Inputs, "owner", input.OwnerID)
 		result := p.executeOp(ctx, op, data)
 		results[op.Name] = result
-		// Scan failure is fatal.
+		slog.Info("workflow: operation complete", "op", op.Name, "success", result.Success, "error", result.Error, "size", result.SizeBytes)
+
+		// Free inputs that are no longer referenced by later operations or destinations.
+		for _, ref := range op.Inputs {
+			refCount[ref]--
+			if refCount[ref] <= 0 {
+				delete(data, ref)
+			}
+		}
+
+		// Scan failure is fatal — skip all remaining operations.
 		if op.IsScan() && !result.Success {
-			break
+			scanFailed = true
 		}
 	}
 
 	// Step 3: Upload outputs to destinations.
 	for name, dest := range input.Destinations {
-		name, dest := name, dest
 		r := results[name]
 
 		// Multi-page thumbnail: upload each page with _NNN suffix.
@@ -139,21 +221,19 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (P
 			ext := pathExt(dest.Key)
 			base := strings.TrimSuffix(dest.Key, ext)
 			for _, pg := range r.ThumbnailPages {
-				pg := pg
 				dataKey := fmt.Sprintf("%s_p%03d", name, pg.PageNumber)
 				pageData := data[dataKey]
 				if pageData == nil {
 					continue
 				}
 				pageKey := fmt.Sprintf("%s_%03d%s", base, pg.PageNumber, ext)
-				_, err := dbos.RunAsStep(ctx, func(sctx context.Context) (any, error) {
+				_, uploadErr := dbos.RunAsStep(ctx, func(sctx context.Context) (any, error) {
 					return nil, p.uploadFile(sctx, dest.Bucket, pageKey, dest.ContentType, pageData)
 				}, dbos.WithStepName("upload_"+dataKey))
-				if err != nil {
-					slog.Error("upload destination failed", "name", dataKey, "error", err)
+				if uploadErr != nil {
+					slog.Error("upload destination failed", "name", dataKey, "error", uploadErr)
 				}
 				pg.Destination = FileRefDef{Bucket: dest.Bucket, Key: pageKey, ContentType: dest.ContentType}
-				// Update the result in-place.
 				for j := range r.ThumbnailPages {
 					if r.ThumbnailPages[j].PageNumber == pg.PageNumber {
 						r.ThumbnailPages[j].Destination = pg.Destination
@@ -164,16 +244,18 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (P
 		}
 
 		if fileData, ok := data[name]; ok {
-			_, err := dbos.RunAsStep(ctx, func(sctx context.Context) (any, error) {
+			slog.Info("workflow: uploading output", "name", name, "bucket", dest.Bucket, "key", dest.Key, "size", len(fileData))
+			_, uploadErr := dbos.RunAsStep(ctx, func(sctx context.Context) (any, error) {
 				return nil, p.uploadFile(sctx, dest.Bucket, dest.Key, dest.ContentType, fileData)
 			}, dbos.WithStepName("upload_"+name))
-			if err != nil {
-				slog.Error("upload destination failed", "name", name, "error", err)
+			if uploadErr != nil {
+				slog.Error("upload destination failed", "name", name, "error", uploadErr)
 			}
 		}
 	}
 
-	return ProcessOutput{Results: results}, nil
+	output = ProcessOutput{Results: results}
+	return output, nil
 }
 
 func (p *Processor) executeOp(ctx dbos.DBOSContext, op OperationDef, data map[string][]byte) *OperationResultDef {
@@ -196,8 +278,9 @@ func (p *Processor) executeOp(ctx dbos.DBOSContext, op OperationDef, data map[st
 func (p *Processor) execScan(ctx dbos.DBOSContext, op OperationDef, data map[string][]byte) *OperationResultDef {
 	if p.scanner == nil {
 		return &OperationResultDef{
-			Success:    true,
-			ScanDetail: &ScanDef{Clean: true},
+			Success:    false,
+			ScanDetail: &ScanDef{Clean: false},
+			Error:      "scanning disabled: no antivirus configured",
 		}
 	}
 
@@ -210,7 +293,7 @@ func (p *Processor) execScan(ctx dbos.DBOSContext, op OperationDef, data map[str
 	}
 	return &OperationResultDef{
 		Success:    result.Clean,
-		ScanDetail: &ScanDef{Clean: result.Clean, VirusName: result.Detail},
+		ScanDetail: &ScanDef{Clean: result.Clean, Detail: result.Detail},
 		Error:      boolStr(!result.Clean, "virus detected: "+result.Detail),
 	}
 }
@@ -277,7 +360,6 @@ func (p *Processor) execThumbnail(ctx dbos.DBOSContext, op OperationDef, data ma
 				SizeBytes:  int64(len(result.Data)),
 			})
 		}
-		// Also store first page under op.Name for backward compat.
 		if pageCount > 0 {
 			data[op.Name] = data[fmt.Sprintf("%s_p001", op.Name)]
 		}
@@ -321,7 +403,17 @@ func (p *Processor) downloadFile(ctx context.Context, bucket, key string) ([]byt
 		return nil, fmt.Errorf("get object %s/%s: %w", bucket, key, err)
 	}
 	defer rc.Close()
-	return io.ReadAll(rc)
+
+	// Enforce max file size.
+	r := io.LimitReader(rc, p.maxFileSize+1)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read object %s/%s: %w", bucket, key, err)
+	}
+	if int64(len(data)) > p.maxFileSize {
+		return nil, fmt.Errorf("object %s/%s exceeds max file size (%d bytes)", bucket, key, p.maxFileSize)
+	}
+	return data, nil
 }
 
 func (p *Processor) uploadFile(ctx context.Context, bucket, key, contentType string, data []byte) error {
@@ -337,4 +429,20 @@ func boolStr(cond bool, s string) string {
 
 func pathExt(p string) string {
 	return path.Ext(p)
+}
+
+// buildRefCounts computes how many times each data key is referenced by
+// operations (as inputs) and destinations (for upload). This allows the
+// workflow to free data entries after their last use.
+func buildRefCounts(input ProcessInput) map[string]int {
+	rc := make(map[string]int)
+	for _, op := range input.Operations {
+		for _, ref := range op.Inputs {
+			rc[ref]++
+		}
+	}
+	for name := range input.Destinations {
+		rc[name]++
+	}
+	return rc
 }

@@ -4,12 +4,17 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"time"
 )
+
+// maxResponseSize is the maximum size of a Gotenberg response body (512 MB).
+const maxResponseSize = 512 << 20
 
 // NamedPDF represents a named PDF for merging.
 type NamedPDF struct {
@@ -33,7 +38,7 @@ type Client struct {
 func New(baseURL string) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 5 * time.Minute},
 	}
 }
 
@@ -60,11 +65,12 @@ func (c *Client) convertImageToPDF(ctx context.Context, name string, data []byte
 		return nil, fmt.Errorf("create html part: %w", err)
 	}
 	// Gotenberg's Chromium route can reference local files by name.
-	html := `<!DOCTYPE html>
+	// Escape the filename to prevent HTML injection / XSS.
+	htmlContent := `<!DOCTYPE html>
 <html><body style="margin:0;padding:0;">
-<img src="` + name + `" style="max-width:100%;height:auto;">
+<img src="` + html.EscapeString(name) + `" style="max-width:100%;height:auto;">
 </body></html>`
-	if _, err := htmlPart.Write([]byte(html)); err != nil {
+	if _, err := htmlPart.Write([]byte(htmlContent)); err != nil {
 		return nil, fmt.Errorf("write html: %w", err)
 	}
 
@@ -144,7 +150,7 @@ func (c *Client) doRequest(ctx context.Context, path, contentType string, body i
 		}
 	}()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}

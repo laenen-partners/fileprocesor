@@ -10,7 +10,11 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"time"
 )
+
+// maxResponseSize is the maximum size of a Docling response body (512 MB).
+const maxResponseSize = 512 << 20
 
 // ConvertResult holds the output from Docling conversion.
 type ConvertResult struct {
@@ -34,7 +38,7 @@ type Client struct {
 func New(baseURL string) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 10 * time.Minute},
 	}
 }
 
@@ -90,7 +94,7 @@ func (c *Client) Convert(ctx context.Context, name string, data []byte) (*Conver
 		}
 	}()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}

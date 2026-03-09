@@ -13,6 +13,11 @@ tasks:
     cmds:
       - buf generate
 
+  generate:apikey:
+    desc: Generate a cryptographically random API key
+    cmds:
+      - openssl rand -hex 32
+
   lint:
     desc: Lint protobuf definitions
     cmds:
@@ -33,15 +38,39 @@ tasks:
     cmds:
       - go test -v -count=1 ./...
 
-  run:
-    desc: Run the server locally
+  test:cover:
+    desc: Run tests with coverage summary
     cmds:
-      - go run ./cmd/fproc
+      - go test -coverprofile=coverage.out -count=1 ./...
+
+  test:cover:html:
+    desc: Generate HTML coverage report and open in browser
+    cmds:
+      - go test -coverprofile=coverage.out -count=1 ./...
+      - go tool cover -html=coverage.out -o coverage.html
+      - open coverage.html
 
   test:e2e:
     desc: Run e2e tests (requires task infra:up)
     cmds:
       - go test -v -count=1 -run 'TestE2E_' -timeout 300s ./...
+
+  run:
+    desc: Run the server locally
+    cmds:
+      - go run ./cmd/fproc
+
+  live:
+    desc: Run the server with live reload (requires air)
+    cmds:
+      - air -c .air.toml -- || go run ./cmd/fproc
+
+  clean:
+    desc: Remove build artifacts and local data
+    cmds:
+      - rm -rf bin/
+      - rm -rf .data/
+      - rm -f coverage.out coverage.html
 
   tidy:
     desc: Tidy go modules

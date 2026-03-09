@@ -36,11 +36,14 @@ message FileRef {
 
 // --- Pipeline ---
 
+// ProcessRequest defines a multi-step file processing pipeline.
+// Maximum input file size is controlled by the server (default 256 MB).
 message ProcessRequest {
   repeated FileInput inputs = 1;
   repeated Operation operations = 2;
   map<string, FileRef> destinations = 3;
-  int32 max_concurrency = 4;
+  reserved 4;
+  reserved "max_concurrency";
 }
 
 message FileInput {
@@ -90,7 +93,14 @@ message OperationResult {
   int64 size_bytes = 21;
 }
 
-message ScanDetail { bool clean = 1; string virus_name = 2; }
+message ScanDetail {
+  bool clean = 1;
+  // Detail from the antivirus scanner: virus name when a threat is detected,
+  // or error message on scanner failure. Empty when clean.
+  string detail = 3;
+  reserved 2;
+  reserved "virus_name";
+}
 message MarkdownDetail { string markdown = 1; string html = 2; }
 
 message ThumbnailPage {
@@ -104,10 +114,13 @@ message ThumbnailDetail {
 }
 
 // --- Standalone RPCs ---
+// Maximum file size is controlled by the server (default 256 MB, configurable via MAX_FILE_SIZE_BYTES).
 
 message ScanFileRequest { string bucket = 1; string key = 2; }
 message ScanFileResponse { bool clean = 1; string detail = 2; }
 
+// ConvertToPDFRequest converts a document to PDF.
+// content_type should match the actual file type for correct backend routing.
 message ConvertToPDFRequest {
   string bucket = 1; string key = 2; string content_type = 3;
   FileRef destination = 4;
@@ -128,8 +141,10 @@ message GenerateThumbnailRequest {
   PageSelection pages = 7;
 }
 message GenerateThumbnailResponse {
-  FileRef result = 1;
+  // Deprecated: use results instead. Populated with first page for backwards compatibility.
+  FileRef result = 1 [deprecated = true];
   int64 size_bytes = 2;
+  // Per-page results. Always populated (single element for PAGE_SELECTION_FIRST).
   repeated ThumbnailPage results = 3;
 }
 
