@@ -17,11 +17,10 @@ import (
 	"github.com/laenen-partners/fileprocesor/gotenberg"
 	"github.com/laenen-partners/fileprocesor/pdf2img"
 	"github.com/laenen-partners/jobs"
-	"github.com/laenen-partners/jobs/dbosutil"
 	"github.com/laenen-partners/objectstore"
 )
 
-// Processor holds the service dependencies, shared across workflows.
+// Processor holds the service dependencies.
 type Processor struct {
 	store          objectstore.Store
 	scanner        antivirus.Scanner
@@ -34,98 +33,107 @@ type Processor struct {
 	allowedBuckets map[string]bool // nil = allow all
 }
 
-// ProcessInput is the workflow input, serialized from ProcessRequest.
+// ProcessInput describes a processing pipeline.
 type ProcessInput struct {
-	Inputs       []FileInputDef        `json:"inputs"`
-	Operations   []OperationDef        `json:"operations"`
-	Destinations map[string]FileRefDef `json:"destinations"`
-
-	// Job metadata (set by handler when jobs client is available).
-	OwnerID string `json:"owner_id,omitempty"`
-	TeamID  string `json:"team_id,omitempty"`
-	InboxID string `json:"inbox_id,omitempty"`
+	Inputs       []FileInput        `json:"inputs"`
+	Operations   []Operation        `json:"operations"`
+	Destinations map[string]FileRef `json:"destinations"`
+	Tags         []string           `json:"tags,omitempty"`
 }
 
-type FileInputDef struct {
+// FileInput describes an input file to be downloaded.
+type FileInput struct {
 	Name        string `json:"name"`
 	Bucket      string `json:"bucket"`
 	Key         string `json:"key"`
 	ContentType string `json:"content_type"`
 }
 
-type FileRefDef struct {
+// FileRef describes a reference to a file in object storage.
+type FileRef struct {
 	Bucket      string `json:"bucket"`
 	Key         string `json:"key"`
 	ContentType string `json:"content_type"`
 }
 
-type OperationDef struct {
-	Name            string          `json:"name"`
-	Inputs          []string        `json:"inputs"`
-	Scan            *ScanOpDef      `json:"scan,omitempty"`
-	ConvertToPDF    *ConvertOpDef   `json:"convert_to_pdf,omitempty"`
-	MergePDFs       *MergeOpDef     `json:"merge_pdfs,omitempty"`
-	Thumbnail       *ThumbnailOpDef `json:"thumbnail,omitempty"`
-	ExtractMarkdown *MarkdownOpDef  `json:"extract_markdown,omitempty"`
+// Operation describes a single processing step in the pipeline.
+type Operation struct {
+	Name            string             `json:"name"`
+	Inputs          []string           `json:"inputs"`
+	Scan            *ScanOp            `json:"scan,omitempty"`
+	ConvertToPDF    *ConvertToPDFOp    `json:"convert_to_pdf,omitempty"`
+	MergePDFs       *MergePDFsOp       `json:"merge_pdfs,omitempty"`
+	Thumbnail       *ThumbnailOp       `json:"thumbnail,omitempty"`
+	ExtractMarkdown *ExtractMarkdownOp `json:"extract_markdown,omitempty"`
 }
 
-type ScanOpDef struct{}
-type ConvertOpDef struct{}
-type MergeOpDef struct{}
-type ThumbnailOpDef struct {
+// ScanOp configures an antivirus scan operation.
+type ScanOp struct{}
+
+// ConvertToPDFOp configures a PDF conversion operation.
+type ConvertToPDFOp struct{}
+
+// MergePDFsOp configures a PDF merge operation.
+type MergePDFsOp struct{}
+
+// ThumbnailOp configures a thumbnail generation operation.
+type ThumbnailOp struct {
 	Width  int32  `json:"width"`
-	Dpi    int32  `json:"dpi"`
+	DPI    int32  `json:"dpi"`
 	Format string `json:"format,omitempty"`
 	Pages  string `json:"pages,omitempty"` // "first" or "all"
 }
-type MarkdownOpDef struct{}
 
-func (o *OperationDef) IsScan() bool { return o.Scan != nil }
+// ExtractMarkdownOp configures a markdown extraction operation.
+type ExtractMarkdownOp struct{}
 
-// OperationResultDef is the workflow output for a single operation.
-type OperationResultDef struct {
-	Success        bool                 `json:"success"`
-	Error          string               `json:"error,omitempty"`
-	ScanDetail     *ScanDef             `json:"scan,omitempty"`
-	MDDetail       *MDDef               `json:"markdown,omitempty"`
-	ThumbnailPages []ThumbnailResultDef `json:"thumbnail_pages,omitempty"`
-	Destination    *FileRefDef          `json:"destination,omitempty"`
-	SizeBytes      int64                `json:"size_bytes,omitempty"`
+func (o *Operation) isScan() bool { return o.Scan != nil }
+
+// OperationResult is the output for a single operation.
+type OperationResult struct {
+	Success        bool              `json:"success"`
+	Error          string            `json:"error,omitempty"`
+	ScanDetail     *ScanDetail       `json:"scan,omitempty"`
+	MDDetail       *MarkdownDetail   `json:"markdown,omitempty"`
+	ThumbnailPages []ThumbnailDetail `json:"thumbnail_pages,omitempty"`
+	Destination    *FileRef          `json:"destination,omitempty"`
+	SizeBytes      int64             `json:"size_bytes,omitempty"`
 }
 
-type ScanDef struct {
+// ScanDetail contains antivirus scan results.
+type ScanDetail struct {
 	Clean  bool   `json:"clean"`
 	Detail string `json:"detail,omitempty"`
 }
 
-type MDDef struct {
+// MarkdownDetail contains markdown extraction results.
+type MarkdownDetail struct {
 	Markdown string `json:"markdown"`
 	HTML     string `json:"html"`
 }
 
-type ThumbnailResultDef struct {
-	PageNumber  int32      `json:"page_number"`
-	Destination FileRefDef `json:"destination"`
-	SizeBytes   int64      `json:"size_bytes"`
+// ThumbnailDetail describes one page of a multi-page thumbnail result.
+type ThumbnailDetail struct {
+	PageNumber  int32   `json:"page_number"`
+	Destination FileRef `json:"destination"`
+	SizeBytes   int64   `json:"size_bytes"`
 }
 
-// ProcessOutput is the workflow output.
+// ProcessOutput is the pipeline output.
 type ProcessOutput struct {
-	Results map[string]*OperationResultDef `json:"results"`
+	Results map[string]*OperationResult `json:"results"`
 }
 
 // ProcessWorkflow is the DBOS workflow registered at startup.
 func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (output ProcessOutput, err error) {
-	// Step 0: Publish job entity (if jobs client is available).
+	// Step 0: Publish job (if jobs client is available).
 	var jobID string
 	if p.jobs != nil {
 		wfID, _ := dbos.GetWorkflowID(ctx)
-		job, pubErr := dbosutil.PublishStep(ctx, p.jobs, jobs.PublishParams{
-			WorkflowID: wfID,
-			JobType:    "file_processing",
-			OwnerID:    input.OwnerID,
-			TeamID:     input.TeamID,
-			InboxID:    input.InboxID,
+		job, pubErr := p.jobs.RegisterJob(ctx, jobs.RegisterJobParams{
+			ExternalReference: wfID,
+			JobType:           "file_processing",
+			Tags:              append([]string{"file_processing"}, input.Tags...),
 		})
 		if pubErr != nil {
 			return ProcessOutput{}, fmt.Errorf("publish job: %w", pubErr)
@@ -146,7 +154,6 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (o
 				errDetail = err.Error()
 			}
 
-			// Serialize results into job for retrieval via GetJob.
 			var resultsJSON json.RawMessage
 			if output.Results != nil {
 				if b, jsonErr := json.Marshal(output); jsonErr == nil {
@@ -154,9 +161,9 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (o
 				}
 			}
 
-			finalizeErr := dbosutil.FinalizeStep(ctx, p.jobs, jobID, jobs.FinalizeParams{
-				Status:  status,
-				Error:   errDetail,
+			finalizeErr := p.jobs.FinalizeJob(ctx, jobID, jobs.FinalizeParams{
+				Status: status,
+				Error:  errDetail,
 				Output: resultsJSON,
 			})
 			if finalizeErr != nil {
@@ -167,12 +174,13 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (o
 
 	// Step 1: Download all inputs.
 	if p.jobs != nil && jobID != "" {
-		dbosutil.ProgressEvent(ctx, jobs.Progress{Step: "downloading", Current: 0, Total: len(input.Inputs)})
+		_ = p.jobs.ReportProgress(ctx, jobID, jobs.Progress{Step: "downloading", Current: 0, Total: len(input.Inputs)})
 	}
 
 	data := make(map[string][]byte)
+	keys := make(map[string]string) // name → original key/filename
 	for i, inp := range input.Inputs {
-		slog.Info("workflow: downloading input", "name", inp.Name, "bucket", inp.Bucket, "key", inp.Key, "owner", input.OwnerID)
+		slog.Info("workflow: downloading input", "name", inp.Name, "bucket", inp.Bucket, "key", inp.Key)
 		fileData, dlErr := dbos.RunAsStep(ctx, func(sctx context.Context) ([]byte, error) {
 			return p.downloadFile(sctx, inp.Bucket, inp.Key)
 		}, dbos.WithStepName("download_"+inp.Name))
@@ -181,34 +189,34 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (o
 		}
 		slog.Info("workflow: downloaded input", "name", inp.Name, "size", len(fileData))
 		data[inp.Name] = fileData
+		keys[inp.Name] = inp.Key
 
 		if p.jobs != nil && jobID != "" {
-			dbosutil.ProgressEvent(ctx, jobs.Progress{Step: "downloading", Current: i + 1, Total: len(input.Inputs)})
+			_ = p.jobs.ReportProgress(ctx, jobID, jobs.Progress{Step: "downloading", Current: i + 1, Total: len(input.Inputs)})
 		}
 	}
 
 	// Step 2: Execute operations in order.
-	// Build reference counts so we can free data entries after their last use.
 	refCount := buildRefCounts(input)
 
-	results := make(map[string]*OperationResultDef)
+	results := make(map[string]*OperationResult)
 	scanFailed := false
 	for i, op := range input.Operations {
 		if scanFailed {
-			results[op.Name] = &OperationResultDef{Error: "skipped: prior scan detected a threat"}
+			results[op.Name] = &OperationResult{Error: "skipped: prior scan detected a threat"}
 			continue
 		}
 
 		if p.jobs != nil && jobID != "" {
-			dbosutil.ProgressEvent(ctx, jobs.Progress{Step: op.Name, Current: i + 1, Total: len(input.Operations)})
+			_ = p.jobs.ReportProgress(ctx, jobID, jobs.Progress{Step: op.Name, Current: i + 1, Total: len(input.Operations)})
 		}
 
-		slog.Info("workflow: executing operation", "op", op.Name, "inputs", op.Inputs, "owner", input.OwnerID)
-		result := p.executeOp(ctx, op, data)
+		slog.Info("workflow: executing operation", "op", op.Name, "inputs", op.Inputs)
+		result := p.executeOp(ctx, op, data, keys)
 		results[op.Name] = result
 		slog.Info("workflow: operation complete", "op", op.Name, "success", result.Success, "error", result.Error, "size", result.SizeBytes)
 
-		// Free inputs that are no longer referenced by later operations or destinations.
+		// Free inputs that are no longer referenced.
 		for _, ref := range op.Inputs {
 			refCount[ref]--
 			if refCount[ref] <= 0 {
@@ -216,8 +224,7 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (o
 			}
 		}
 
-		// Scan failure is fatal — skip all remaining operations.
-		if op.IsScan() && !result.Success {
+		if op.isScan() && !result.Success {
 			scanFailed = true
 		}
 	}
@@ -243,7 +250,7 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (o
 				if uploadErr != nil {
 					slog.Error("upload destination failed", "name", dataKey, "error", uploadErr)
 				}
-				pg.Destination = FileRefDef{Bucket: dest.Bucket, Key: pageKey, ContentType: dest.ContentType}
+				pg.Destination = FileRef{Bucket: dest.Bucket, Key: pageKey, ContentType: dest.ContentType}
 				for j := range r.ThumbnailPages {
 					if r.ThumbnailPages[j].PageNumber == pg.PageNumber {
 						r.ThumbnailPages[j].Destination = pg.Destination
@@ -268,12 +275,12 @@ func (p *Processor) ProcessWorkflow(ctx dbos.DBOSContext, input ProcessInput) (o
 	return output, nil
 }
 
-func (p *Processor) executeOp(ctx dbos.DBOSContext, op OperationDef, data map[string][]byte) *OperationResultDef {
+func (p *Processor) executeOp(ctx dbos.DBOSContext, op Operation, data map[string][]byte, keys map[string]string) *OperationResult {
 	switch {
 	case op.Scan != nil:
 		return p.execScan(ctx, op, data)
 	case op.ConvertToPDF != nil:
-		return p.execConvert(ctx, op, data)
+		return p.execConvert(ctx, op, data, keys)
 	case op.MergePDFs != nil:
 		return p.execMerge(ctx, op, data)
 	case op.Thumbnail != nil:
@@ -281,15 +288,15 @@ func (p *Processor) executeOp(ctx dbos.DBOSContext, op OperationDef, data map[st
 	case op.ExtractMarkdown != nil:
 		return p.execMarkdown(ctx, op, data)
 	default:
-		return &OperationResultDef{Error: "unknown operation type"}
+		return &OperationResult{Error: "unknown operation type"}
 	}
 }
 
-func (p *Processor) execScan(ctx dbos.DBOSContext, op OperationDef, data map[string][]byte) *OperationResultDef {
+func (p *Processor) execScan(ctx dbos.DBOSContext, op Operation, data map[string][]byte) *OperationResult {
 	if p.scanner == nil {
-		return &OperationResultDef{
+		return &OperationResult{
 			Success:    false,
-			ScanDetail: &ScanDef{Clean: false},
+			ScanDetail: &ScanDetail{Clean: false},
 			Error:      "scanning disabled: no antivirus configured",
 		}
 	}
@@ -299,29 +306,34 @@ func (p *Processor) execScan(ctx dbos.DBOSContext, op OperationDef, data map[str
 		return p.scanner.Scan(sctx, inputData)
 	}, dbos.WithStepName("scan_"+op.Name))
 	if err != nil {
-		return &OperationResultDef{Error: fmt.Sprintf("scan failed: %v", err)}
+		return &OperationResult{Error: fmt.Sprintf("scan failed: %v", err)}
 	}
-	return &OperationResultDef{
+	return &OperationResult{
 		Success:    result.Clean,
-		ScanDetail: &ScanDef{Clean: result.Clean, Detail: result.Detail},
+		ScanDetail: &ScanDetail{Clean: result.Clean, Detail: result.Detail},
 		Error:      boolStr(!result.Clean, "virus detected: "+result.Detail),
 	}
 }
 
-func (p *Processor) execConvert(ctx dbos.DBOSContext, op OperationDef, data map[string][]byte) *OperationResultDef {
+func (p *Processor) execConvert(ctx dbos.DBOSContext, op Operation, data map[string][]byte, keys map[string]string) *OperationResult {
 	inputName := op.Inputs[0]
 	inputData := data[inputName]
+	fileName := keys[inputName]
+	if fileName == "" {
+		fileName = inputName
+	}
 	pdfBytes, err := dbos.RunAsStep(ctx, func(sctx context.Context) ([]byte, error) {
-		return p.gotenberg.ConvertToPDF(sctx, inputName, inputData, "")
+		return p.gotenberg.ConvertToPDF(sctx, fileName, inputData, "")
 	}, dbos.WithStepName("convert_"+op.Name))
 	if err != nil {
-		return &OperationResultDef{Error: fmt.Sprintf("convert failed: %v", err)}
+		return &OperationResult{Error: fmt.Sprintf("convert failed: %v", err)}
 	}
 	data[op.Name] = pdfBytes
-	return &OperationResultDef{Success: true, SizeBytes: int64(len(pdfBytes))}
+	keys[op.Name] = op.Name + ".pdf"
+	return &OperationResult{Success: true, SizeBytes: int64(len(pdfBytes))}
 }
 
-func (p *Processor) execMerge(ctx dbos.DBOSContext, op OperationDef, data map[string][]byte) *OperationResultDef {
+func (p *Processor) execMerge(ctx dbos.DBOSContext, op Operation, data map[string][]byte) *OperationResult {
 	pdfs := make([]gotenberg.NamedPDF, 0, len(op.Inputs))
 	for _, name := range op.Inputs {
 		pdfs = append(pdfs, gotenberg.NamedPDF{Name: name + ".pdf", Data: data[name]})
@@ -330,18 +342,18 @@ func (p *Processor) execMerge(ctx dbos.DBOSContext, op OperationDef, data map[st
 		return p.gotenberg.MergePDFs(sctx, pdfs)
 	}, dbos.WithStepName("merge_"+op.Name))
 	if err != nil {
-		return &OperationResultDef{Error: fmt.Sprintf("merge failed: %v", err)}
+		return &OperationResult{Error: fmt.Sprintf("merge failed: %v", err)}
 	}
 	data[op.Name] = merged
-	return &OperationResultDef{Success: true, SizeBytes: int64(len(merged))}
+	return &OperationResult{Success: true, SizeBytes: int64(len(merged))}
 }
 
-func (p *Processor) execThumbnail(ctx dbos.DBOSContext, op OperationDef, data map[string][]byte) *OperationResultDef {
+func (p *Processor) execThumbnail(ctx dbos.DBOSContext, op Operation, data map[string][]byte) *OperationResult {
 	inputData := data[op.Inputs[0]]
 	opts := pdf2img.ConvertOpts{
 		Format: op.Thumbnail.Format,
 		Width:  int(op.Thumbnail.Width),
-		DPI:    int(op.Thumbnail.Dpi),
+		DPI:    int(op.Thumbnail.DPI),
 	}
 
 	if op.Thumbnail.Pages == "all" {
@@ -349,10 +361,10 @@ func (p *Processor) execThumbnail(ctx dbos.DBOSContext, op OperationDef, data ma
 			return p.pdf2img.PageCount(sctx, inputData)
 		}, dbos.WithStepName("pagecount_"+op.Name))
 		if err != nil {
-			return &OperationResultDef{Error: fmt.Sprintf("thumbnail page count failed: %v", err)}
+			return &OperationResult{Error: fmt.Sprintf("thumbnail page count failed: %v", err)}
 		}
 
-		pages := make([]ThumbnailResultDef, 0, pageCount)
+		pages := make([]ThumbnailDetail, 0, pageCount)
 		for i := 1; i <= pageCount; i++ {
 			pageOpts := opts
 			pageOpts.Page = i
@@ -361,11 +373,11 @@ func (p *Processor) execThumbnail(ctx dbos.DBOSContext, op OperationDef, data ma
 				return p.pdf2img.ConvertPage(sctx, inputData, pageOpts)
 			}, dbos.WithStepName(stepName))
 			if err != nil {
-				return &OperationResultDef{Error: fmt.Sprintf("thumbnail page %d failed: %v", i, err)}
+				return &OperationResult{Error: fmt.Sprintf("thumbnail page %d failed: %v", i, err)}
 			}
 			dataKey := fmt.Sprintf("%s_p%03d", op.Name, i)
 			data[dataKey] = result.Data
-			pages = append(pages, ThumbnailResultDef{
+			pages = append(pages, ThumbnailDetail{
 				PageNumber: int32(i),
 				SizeBytes:  int64(len(result.Data)),
 			})
@@ -373,7 +385,7 @@ func (p *Processor) execThumbnail(ctx dbos.DBOSContext, op OperationDef, data ma
 		if pageCount > 0 {
 			data[op.Name] = data[fmt.Sprintf("%s_p001", op.Name)]
 		}
-		return &OperationResultDef{
+		return &OperationResult{
 			Success:        true,
 			SizeBytes:      pages[0].SizeBytes,
 			ThumbnailPages: pages,
@@ -386,24 +398,24 @@ func (p *Processor) execThumbnail(ctx dbos.DBOSContext, op OperationDef, data ma
 		return p.pdf2img.ConvertPage(sctx, inputData, opts)
 	}, dbos.WithStepName("thumbnail_"+op.Name))
 	if err != nil {
-		return &OperationResultDef{Error: fmt.Sprintf("thumbnail failed: %v", err)}
+		return &OperationResult{Error: fmt.Sprintf("thumbnail failed: %v", err)}
 	}
 	data[op.Name] = result.Data
-	return &OperationResultDef{Success: true, SizeBytes: int64(len(result.Data))}
+	return &OperationResult{Success: true, SizeBytes: int64(len(result.Data))}
 }
 
-func (p *Processor) execMarkdown(ctx dbos.DBOSContext, op OperationDef, data map[string][]byte) *OperationResultDef {
+func (p *Processor) execMarkdown(ctx dbos.DBOSContext, op Operation, data map[string][]byte) *OperationResult {
 	inputName := op.Inputs[0]
 	inputData := data[inputName]
 	result, err := dbos.RunAsStep(ctx, func(sctx context.Context) (*docling.ConvertResult, error) {
 		return p.docling.Convert(sctx, inputName+".pdf", inputData)
 	}, dbos.WithStepName("markdown_"+op.Name))
 	if err != nil {
-		return &OperationResultDef{Error: fmt.Sprintf("extract markdown failed: %v", err)}
+		return &OperationResult{Error: fmt.Sprintf("extract markdown failed: %v", err)}
 	}
-	return &OperationResultDef{
+	return &OperationResult{
 		Success:  true,
-		MDDetail: &MDDef{Markdown: result.Markdown, HTML: result.HTML},
+		MDDetail: &MarkdownDetail{Markdown: result.Markdown, HTML: result.HTML},
 	}
 }
 
@@ -414,7 +426,6 @@ func (p *Processor) downloadFile(ctx context.Context, bucket, key string) ([]byt
 	}
 	defer rc.Close()
 
-	// Enforce max file size.
 	r := io.LimitReader(rc, p.maxFileSize+1)
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -441,9 +452,6 @@ func pathExt(p string) string {
 	return path.Ext(p)
 }
 
-// buildRefCounts computes how many times each data key is referenced by
-// operations (as inputs) and destinations (for upload). This allows the
-// workflow to free data entries after their last use.
 func buildRefCounts(input ProcessInput) map[string]int {
 	rc := make(map[string]int)
 	for _, op := range input.Operations {

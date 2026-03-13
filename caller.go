@@ -18,6 +18,7 @@ func CallerFromContext(ctx context.Context) Caller {
 	return c
 }
 
-func withCaller(ctx context.Context, c Caller) context.Context {
+// WithCaller returns a copy of ctx carrying the given Caller identity.
+func WithCaller(ctx context.Context, c Caller) context.Context {
 	return context.WithValue(ctx, callerKey, c)
 }

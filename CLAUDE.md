@@ -1,104 +1,97 @@
 # FileProcessor
 
-Go library and server for file processing with Connect-RPC API, DBOS durable workflows, and pluggable backends (antivirus, PDF conversion, markdown extraction, thumbnails).
+Pure Go library for file processing with pluggable backends (antivirus, PDF conversion, markdown extraction, thumbnails) and optional DBOS durable workflows.
 
 ## Quick reference
 
 - **Language:** Go 1.25+
-- **RPC framework:** Connect-RPC (protobuf)
-- **Workflow engine:** DBOS (durable execution)
+- **Workflow engine:** DBOS (optional, for durable async pipelines)
 - **Dependencies:** ObjectStore (sibling module), Gotenberg, Docling, ClamAV, pdf2img
-- **Jobs SDK:** `github.com/laenen-partners/jobs` (wraps EntityStore for job tracking)
+- **Jobs SDK:** `github.com/laenen-partners/jobs` (optional, wraps EntityStore for job tracking)
 - **Task runner:** [Task](https://taskfile.dev) (`Taskfile.yml`)
-- **Proto tool:** [Buf](https://buf.build) (`buf.yaml`, `buf.gen.yaml`)
 - **Tool management:** [mise](https://mise.jdx.dev) (`mise.toml`)
 
 ## Project structure
 
 ```
-cmd/fproc/          Server binary
-proto/              Protobuf definitions
-gen/                Generated protobuf/connect code (do not edit)
 antivirus/          ClamAV scanner integration
 gotenberg/          Gotenberg PDF conversion / merge
 docling/            Docling markdown extraction
 pdf2img/            PDF-to-image thumbnail generation
 config.go           Config + ConfigFromEnv()
-server.go           New() wires everything, returns (handler, closer, error)
-handler.go          Connect-RPC handler (individual RPCs)
+types.go            Public types, enums, request/response structs
+processor.go        NewProcessor constructor + public API methods + options
 validate.go         Input validation (bucket allowlist, DAG checks)
-workflow.go         Processor, DBOS workflow + operation executors
-auth.go             Connect-RPC auth interceptor (API key, Bearer token)
+workflow.go         Processor struct, DBOS workflow + operation executors
 caller.go           Caller identity context propagation
-middleware.go       HTTP middleware (logging, security headers, rate limiting, CORS)
-docker-compose.yml  Infrastructure (Postgres, ClamAV, Gotenberg, Docling, pdf2img)
-Dockerfile          Multi-stage distroless build
-Tiltfile            Tilt dev environment
 docs/               Review reports
 ```
 
 ## Common commands
 
 ```sh
-task generate      # buf generate (proto -> Go)
-task generate:apikey # generate a random API key
-task lint          # buf lint
-task build         # go build -o bin/fproc ./cmd/fproc
+task build         # go build ./...
 task vet           # go vet ./...
 task test          # go test -v -count=1 ./...
 task test:cover    # run tests with coverage summary
-task test:e2e      # run E2E tests (requires task infra:up)
 task tidy          # go mod tidy
 task clean         # remove build artifacts and local data
-task run           # run the server locally
-task infra:up      # start infrastructure via Tilt
-task infra:down    # stop infrastructure
+```
+
+## Usage
+
+```go
+// Sync-only (no database required)
+proc, err := fileprocesor.NewProcessor(cfg, store)
+scanResp, err := proc.ScanFile(ctx, fileprocesor.ScanFileRequest{Bucket: "b", Key: "k"})
+pdfResp, err := proc.ConvertToPDF(ctx, fileprocesor.ConvertToPDFRequest{...})
+
+// With async Process workflow (requires DBOS + jobs client)
+dbosCtx, _ := dbos.NewDBOSContext(ctx, dbos.Config{...})
+jobsClient := jobs.NewClient(esClient)
+proc, err := fileprocesor.NewProcessor(cfg, store,
+    fileprocesor.WithDBOS(dbosCtx),
+    fileprocesor.WithJobs(jobsClient),
+)
+dbos.RegisterWorkflow(dbosCtx, proc.ProcessWorkflow)
+dbos.Launch(dbosCtx)
+defer dbos.Shutdown(dbosCtx, 30*time.Second)
+
+resp, err := proc.Process(ctx, fileprocesor.ProcessInput{...})
+job, err := proc.GetJob(ctx, resp.JobID)
 ```
 
 ## Configuration
 
-Set the following environment variables (or use a `.env` file loaded by mise):
+`Config` struct fields (or use `ConfigFromEnv()` with environment variables):
 
 | Variable | Default | Description |
 |---|---|---|
-| `ADDR` | `:3001` | Server listen address |
-| `DBOS_DATABASE_URL` | | PostgreSQL connection string (required) |
 | `GOTENBERG_URL` | | Gotenberg URL (empty = log stub) |
 | `DOCLING_URL` | | Docling URL (empty = log stub) |
 | `PDF2IMG_URL` | | pdf2img URL (empty = log stub) |
 | `CLAMAV_ADDRESS` | | ClamAV TCP address (empty = skip scanning) |
-| `ENTITY_STORE_URL` | | EntityStore URL for job tracking (required for Process RPC) |
-| `API_KEYS` | | Comma-separated API keys for RPC auth (empty = auth disabled) |
 | `ALLOWED_BUCKETS` | | Comma-separated bucket allowlist (empty = all allowed) |
-| `RATE_LIMIT` | `0` | Requests per second per IP (0 = disabled) |
-| `RATE_BURST` | `20` | Burst allowance per IP |
-| `CORS_ORIGINS` | | Comma-separated allowed CORS origins |
 | `MAX_FILE_SIZE_BYTES` | `268435456` | Max file size for downloads (256 MB) |
-| `OBJECT_STORE` | `file` | ObjectStore backend: `file` or `s3` |
-| `OBJECT_STORE_PATH` | `.data/objects` | File backend: storage directory |
-| `OBJECT_STORE_URL` | | File backend: public base URL |
+
+DBOS and jobs are configured via options, not Config — the consumer owns their lifecycle.
 
 ## Code conventions
 
-- No `init()` functions; wire dependencies explicitly in `main.go` or `New()`.
-- Generated code lives in `gen/` -- never edit manually, regenerate with `task generate`.
+- No `init()` functions; wire dependencies explicitly via `NewProcessor()`.
 - Errors are wrapped with `fmt.Errorf("context: %w", err)`.
 - Use `slog` for structured logging.
 - Backends with empty config URLs fall back to log-only stubs (no-op).
 - Backend URLs are validated at startup (must be http/https with valid host).
-- DBOS workflows ensure durable execution; each operation runs as a named step.
-- All RPC inputs are validated before processing (bucket allowlist, key path safety, operation DAG integrity).
-- `server.New()` returns `(http.Handler, Closer, error)` — the Closer must be called on shutdown to drain DBOS workflows.
-- **Process RPC is async:** Returns `job_id` + `workflow_id` immediately; poll `GetJob` for status/progress/results.
-- **Standalone RPCs are sync:** ScanFile, ConvertToPDF, MergePDFs, GenerateThumbnail, ExtractMarkdown return results directly.
-- **Jobs SDK integration:** Process workflows publish a job entity, report progress per step, and store results on completion. GetJob, ListJobs, CancelJob RPCs backed by jobs.Client.
+- All inputs are validated before processing (bucket allowlist, key path safety, operation DAG integrity).
+- `NewProcessor()` returns `(*Processor, error)`. DBOS and jobs are injected via `WithDBOS()` and `WithJobs()` options.
+- **DBOS is optional:** Without `WithDBOS`, only sync methods are available. Process/GetJob/ListJobs/CancelJob return an error.
+- **Consumer owns DBOS lifecycle:** Register workflows, launch, and shutdown are the consumer's responsibility.
+- **Process is async:** Returns `JobID` + `WorkflowID` immediately; poll `GetJob` for status/progress/results.
+- **Standalone methods are sync:** ScanFile, ConvertToPDF, MergePDFs, GenerateThumbnail, ExtractMarkdown return results directly.
 
 ## Security
 
-- **Authentication:** Connect-RPC interceptor with API key auth (`Authorization: Bearer <key>`), constant-time comparison.
-- **Bucket allowlist:** `ALLOWED_BUCKETS` restricts which buckets the service can access.
-- **Input validation:** All RPCs validate bucket/key, operation references, and reject path traversal.
-- **Rate limiting:** Per-IP token bucket with LRU eviction (max 100k visitors, 3-min TTL).
-- **Security headers:** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, etc.
+- **Bucket allowlist:** `AllowedBuckets` restricts which buckets the processor can access.
+- **Input validation:** All methods validate bucket/key, operation references, and reject path traversal.
 - **Backend hardening:** HTTP client timeouts on all backends, `io.LimitReader` on responses.
-- **Graceful shutdown:** `signal.NotifyContext` + 30s HTTP drain + DBOS workflow drain.
