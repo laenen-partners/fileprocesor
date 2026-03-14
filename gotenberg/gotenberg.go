@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"mime/multipart"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 )
@@ -59,23 +60,26 @@ func (c *Client) convertImageToPDF(ctx context.Context, name string, data []byte
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 
-	// Write an HTML file that contains the image as a base64 data URI.
+	// Use basename only — Gotenberg places multipart files in a flat directory,
+	// so full paths (e.g. "families/abc/docs/123/image.jpg") won't resolve.
+	basename := path.Base(name)
+
+	// Write an HTML file that references the image by its flat filename.
 	htmlPart, err := w.CreateFormFile("files", "index.html")
 	if err != nil {
 		return nil, fmt.Errorf("create html part: %w", err)
 	}
-	// Gotenberg's Chromium route can reference local files by name.
 	// Escape the filename to prevent HTML injection / XSS.
 	htmlContent := `<!DOCTYPE html>
 <html><body style="margin:0;padding:0;">
-<img src="` + html.EscapeString(name) + `" style="max-width:100%;height:auto;">
+<img src="` + html.EscapeString(basename) + `" style="max-width:100%;height:auto;">
 </body></html>`
 	if _, err := htmlPart.Write([]byte(htmlContent)); err != nil {
 		return nil, fmt.Errorf("write html: %w", err)
 	}
 
-	// Attach the image file.
-	imgPart, err := w.CreateFormFile("files", name)
+	// Attach the image file with the same basename.
+	imgPart, err := w.CreateFormFile("files", basename)
 	if err != nil {
 		return nil, fmt.Errorf("create image part: %w", err)
 	}
