@@ -23,9 +23,29 @@ type ConvertResult struct {
 	DoclingJSON json.RawMessage
 }
 
+// ImageExportMode controls how images appear in Docling's text output formats.
+type ImageExportMode string
+
+const (
+	// ImageExportModePlaceholder replaces images with a placeholder comment.
+	// Use this for NLP pipelines (embedding, extraction) where base64 blobs are noise.
+	ImageExportModePlaceholder ImageExportMode = "placeholder"
+	// ImageExportModeEmbedded inlines images as base64 data URIs (Docling default).
+	ImageExportModeEmbedded ImageExportMode = "embedded"
+	// ImageExportModeReferenced uses file references instead of inline data.
+	ImageExportModeReferenced ImageExportMode = "referenced"
+)
+
+// ConvertOptions configures optional behaviour for a Convert call.
+type ConvertOptions struct {
+	// ImageExportMode controls how images appear in the markdown/HTML/JSON output.
+	// Defaults to ImageExportModePlaceholder when zero value.
+	ImageExportMode ImageExportMode
+}
+
 // Converter converts documents via Docling.
 type Converter interface {
-	Convert(ctx context.Context, name string, data []byte) (*ConvertResult, error)
+	Convert(ctx context.Context, name string, data []byte, opts ConvertOptions) (*ConvertResult, error)
 }
 
 // Client is a real HTTP client for Docling.
@@ -54,7 +74,7 @@ type doclingOutputContent struct {
 	JSON     json.RawMessage `json:"json_content"`
 }
 
-func (c *Client) Convert(ctx context.Context, name string, data []byte) (*ConvertResult, error) {
+func (c *Client) Convert(ctx context.Context, name string, data []byte, opts ConvertOptions) (*ConvertResult, error) {
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 
@@ -72,6 +92,15 @@ func (c *Client) Convert(ctx context.Context, name string, data []byte) (*Conver
 		if err := w.WriteField("to_formats", format); err != nil {
 			return nil, fmt.Errorf("write to_formats: %w", err)
 		}
+	}
+
+	// Set image export mode — default to placeholder so base64 blobs don't appear in text output.
+	imageMode := opts.ImageExportMode
+	if imageMode == "" {
+		imageMode = ImageExportModePlaceholder
+	}
+	if err := w.WriteField("image_export_mode", string(imageMode)); err != nil {
+		return nil, fmt.Errorf("write image_export_mode: %w", err)
 	}
 
 	if err := w.Close(); err != nil {
@@ -124,7 +153,7 @@ func NewLogConverter() *LogConverter {
 	return &LogConverter{}
 }
 
-func (l *LogConverter) Convert(_ context.Context, name string, data []byte) (*ConvertResult, error) {
+func (l *LogConverter) Convert(_ context.Context, name string, data []byte, _ ConvertOptions) (*ConvertResult, error) {
 	slog.Info("docling: convert (stub)", "name", name, "size", len(data))
 	return &ConvertResult{
 		Markdown:    fmt.Sprintf("# %s\n\nPlaceholder markdown for document conversion.", name),

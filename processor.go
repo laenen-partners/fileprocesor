@@ -416,7 +416,7 @@ func (p *Processor) ExtractMarkdown(ctx context.Context, req ExtractMarkdownRequ
 	if err != nil {
 		return nil, err
 	}
-	result, err := p.docling.Convert(ctx, req.Key, data)
+	result, err := p.docling.Convert(ctx, req.Key, data, docling.ConvertOptions{})
 	if err != nil {
 		return nil, err
 	}

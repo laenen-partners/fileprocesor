@@ -408,7 +408,7 @@ func (p *Processor) execMarkdown(ctx dbos.DBOSContext, op Operation, data map[st
 	inputName := op.Inputs[0]
 	inputData := data[inputName]
 	result, err := dbos.RunAsStep(ctx, func(sctx context.Context) (*docling.ConvertResult, error) {
-		return p.docling.Convert(sctx, inputName+".pdf", inputData)
+		return p.docling.Convert(sctx, inputName+".pdf", inputData, docling.ConvertOptions{})
 	}, dbos.WithStepName("markdown_"+op.Name))
 	if err != nil {
 		return &OperationResult{Error: fmt.Sprintf("extract markdown failed: %v", err)}
