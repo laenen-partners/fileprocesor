@@ -1,215 +1,220 @@
 # FileProcessor
 
-A file processing microservice that orchestrates document operations through durable workflows. Upload a file and run a pipeline of operations — antivirus scanning, PDF conversion, merging, thumbnail generation, and markdown extraction — all through a single API call.
-
-Built with [Connect-RPC](https://connectrpc.com) and [DBOS](https://docs.dbos.dev) for reliable, resumable execution.
+A pure Go library for file processing with pluggable backends — antivirus scanning, PDF conversion, merging, thumbnail generation, and markdown extraction. Optionally backed by [DBOS](https://docs.dbos.dev) durable workflows and [jobs](https://github.com/laenen-partners/jobs) for async pipeline execution.
 
 ## Features
 
 - **Antivirus scanning** — ClamAV integration via the INSTREAM protocol
 - **PDF conversion** — Any document to PDF via Gotenberg (LibreOffice + Chromium)
 - **PDF merging** — Combine multiple PDFs into one
-- **Thumbnail generation** — First-page JPEG thumbnails from PDFs
+- **Thumbnail generation** — Page thumbnails from PDFs (JPEG, PNG, or WebP)
 - **Markdown extraction** — PDF to Markdown/HTML via Docling
-- **Durable workflows** — DBOS ensures operations survive crashes and restarts
-- **Pipeline API** — Chain operations in a single `Process` RPC call
+- **Durable workflows** — Optional DBOS integration for crash-resilient async pipelines
+- **Job tracking** — Optional jobs SDK integration for progress monitoring
 
-## Prerequisites
+## Installation
 
-- [Go](https://go.dev) 1.25+
-- [Task](https://taskfile.dev) (task runner)
-- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/)
-- [Buf](https://buf.build) (protobuf tooling, only needed for code generation)
-- [Tilt](https://tilt.dev) (optional, for `task infra:up`)
+```sh
+go get github.com/laenen-partners/fileprocesor
+```
 
 ## Quick start
 
-**1. Clone and configure**
+### Sync usage (no database required)
 
-```sh
-git clone https://github.com/laenen-partners/fileprocesor.git
-cd fileprocesor
-cp .env.sample .env
+```go
+import (
+    "github.com/laenen-partners/fileprocesor"
+    "github.com/laenen-partners/objectstore"
+)
+
+cfg := fileprocesor.Config{
+    GotenbergURL: "http://localhost:3000",
+    DoclingURL:   "http://localhost:5001",
+    PDF2ImgURL:   "http://localhost:5002",
+    ClamAVAddr:   "localhost:3310",
+}
+
+store := objectstore.New(/* ... */)
+proc, err := fileprocesor.NewProcessor(cfg, store)
+
+// Scan a file
+scanResp, err := proc.ScanFile(ctx, fileprocesor.ScanFileRequest{
+    Bucket: "uploads",
+    Key:    "document.pdf",
+})
+
+// Convert to PDF
+pdfResp, err := proc.ConvertToPDF(ctx, fileprocesor.ConvertToPDFRequest{
+    Bucket:      "uploads",
+    Key:         "report.docx",
+    ContentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    Destination: &fileprocesor.FileRef{
+        Bucket: "processed", Key: "report.pdf", ContentType: "application/pdf",
+    },
+})
 ```
 
-**2. Start infrastructure**
+### Async pipeline (requires DBOS + jobs)
 
-```sh
-task infra:up
-```
+```go
+import (
+    "github.com/dbos-inc/dbos-transact-golang/dbos"
+    "github.com/laenen-partners/jobs"
+)
 
-This launches PostgreSQL, Gotenberg, Docling, pdf2img, and ClamAV via Docker Compose.
+dbosCtx, _ := dbos.NewDBOSContext(ctx, dbos.Config{/* ... */})
+jobsClient := jobs.NewClient(esClient)
 
-**3. Run the server**
+proc, err := fileprocesor.NewProcessor(cfg, store,
+    fileprocesor.WithDBOS(dbosCtx),
+    fileprocesor.WithJobs(jobsClient),
+)
 
-```sh
-task run
-```
+dbos.RegisterWorkflow(dbosCtx, proc.ProcessWorkflow)
+dbos.Launch(dbosCtx)
+defer dbos.Shutdown(dbosCtx, 30*time.Second)
 
-The server starts on `http://localhost:3001` by default.
+// Submit a processing pipeline (returns immediately)
+resp, err := proc.Process(ctx, fileprocesor.ProcessInput{
+    Inputs: []fileprocesor.FileInput{
+        {Name: "doc", Bucket: "uploads", Key: "contract.docx", ContentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    },
+    Operations: []fileprocesor.Operation{
+        {Name: "scan",  Inputs: []string{"doc"}, Scan: &fileprocesor.ScanOp{}},
+        {Name: "pdf",   Inputs: []string{"doc"}, ConvertToPDF: &fileprocesor.ConvertToPDFOp{}},
+        {Name: "thumb", Inputs: []string{"pdf"}, Thumbnail: &fileprocesor.ThumbnailOp{Width: 400, DPI: 150}},
+        {Name: "text",  Inputs: []string{"pdf"}, ExtractMarkdown: &fileprocesor.ExtractMarkdownOp{}},
+    },
+    Destinations: map[string]fileprocesor.FileRef{
+        "pdf":   {Bucket: "processed", Key: "contract.pdf", ContentType: "application/pdf"},
+        "thumb": {Bucket: "processed", Key: "contract-thumb.jpg", ContentType: "image/jpeg"},
+    },
+})
 
-**4. Make a request**
-
-```sh
-# Convert a file to PDF (assumes the file is already in the object store)
-buf curl --schema proto \
-  --data '{
-    "bucket": "my-bucket",
-    "key": "report.docx",
-    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "destination": {
-      "bucket": "my-bucket",
-      "key": "report.pdf",
-      "content_type": "application/pdf"
-    }
-  }' \
-  http://localhost:3001/fileprocessor.v1.FileProcessorService/ConvertToPDF
+// Poll for results
+job, err := proc.GetJob(ctx, resp.JobID)
 ```
 
 ## API
 
-All RPCs are defined in [`proto/fileprocessor/v1/fileprocessor.proto`](proto/fileprocessor/v1/fileprocessor.proto).
+### Sync methods
 
-### Standalone RPCs
-
-| RPC | Description |
+| Method | Description |
 |---|---|
 | `ScanFile` | Scan a file for viruses |
 | `ConvertToPDF` | Convert a document to PDF |
 | `MergePDFs` | Merge multiple PDFs into one |
-| `GenerateThumbnail` | Generate a JPEG thumbnail from a PDF |
+| `GenerateThumbnail` | Generate thumbnails from a PDF |
 | `ExtractMarkdown` | Extract Markdown and HTML from a PDF |
 
-### Pipeline RPC
+### Async methods (require DBOS + jobs)
 
-`Process` runs a sequence of operations as a durable DBOS workflow:
-
-```sh
-buf curl --schema proto \
-  --data '{
-    "inputs": [
-      {"name": "doc", "bucket": "uploads", "key": "contract.docx", "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
-    ],
-    "operations": [
-      {"name": "scan",    "inputs": ["doc"],     "scan": {}},
-      {"name": "pdf",     "inputs": ["doc"],     "convert_to_pdf": {}},
-      {"name": "thumb",   "inputs": ["pdf"],     "thumbnail": {"width": 400, "dpi": 150}},
-      {"name": "text",    "inputs": ["pdf"],     "extract_markdown": {}}
-    ],
-    "destinations": {
-      "pdf":   {"bucket": "processed", "key": "contract.pdf",       "content_type": "application/pdf"},
-      "thumb": {"bucket": "processed", "key": "contract-thumb.jpg", "content_type": "image/jpeg"}
-    }
-  }' \
-  http://localhost:3001/fileprocessor.v1.FileProcessorService/Process
-```
-
-Operations run in order. If a scan detects a virus, the workflow stops immediately.
+| Method | Description |
+|---|---|
+| `Process` | Submit a pipeline of operations (returns job ID) |
+| `GetJob` | Get the current state of a processing job |
+| `ListJobs` | List jobs matching filters |
+| `CancelJob` | Cancel a running job |
 
 ## Configuration
 
-Copy `.env.sample` to `.env` and adjust:
+Use `Config` struct fields directly or `ConfigFromEnv()` to read from environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `ADDR` | `:3001` | Server listen address |
-| `DBOS_DATABASE_URL` | | PostgreSQL connection string (required) |
-| `OBJECT_STORE` | `file` | Storage backend: `file` or `s3` |
-| `OBJECT_STORE_PATH` | `.data/objects` | Local storage directory |
-| `OBJECT_STORE_URL` | | Public base URL for presigned URLs |
-| `OBJECT_STORE_SECRET` | | HMAC signing secret for presigned URLs |
-| `GOTENBERG_URL` | | Gotenberg endpoint (empty = log stub) |
-| `DOCLING_URL` | | Docling endpoint (empty = log stub) |
-| `PDF2IMG_URL` | | pdf2img endpoint (empty = log stub) |
+| `GOTENBERG_URL` | | Gotenberg endpoint (empty = log-only stub) |
+| `DOCLING_URL` | | Docling endpoint (empty = log-only stub) |
+| `PDF2IMG_URL` | | pdf2img endpoint (empty = log-only stub) |
 | `CLAMAV_ADDRESS` | | ClamAV TCP address (empty = scanning disabled) |
+| `ALLOWED_BUCKETS` | | Comma-separated bucket allowlist (empty = all allowed) |
+| `MAX_FILE_SIZE_BYTES` | `268435456` | Max file size for downloads (256 MB) |
 
-When a service URL is left empty, the corresponding operation uses a log-only stub. When `CLAMAV_ADDRESS` is empty, antivirus scanning is disabled and a warning is logged at startup.
+Backends with empty URLs fall back to log-only stubs. DBOS and jobs are configured via `WithDBOS()` and `WithJobs()` options — the consumer owns their lifecycle.
 
 ## Project structure
 
 ```
-cmd/fproc/              Server binary entry point
-proto/                  Protobuf service definitions
-gen/                    Generated code (do not edit)
-antivirus/              ClamAV scanner integration
-gotenberg/              Gotenberg PDF conversion and merging
-docling/                Docling markdown/HTML extraction
-pdf2img/                PDF-to-image thumbnail generation
-config.go               Environment-based configuration
-server.go               Service wiring and initialization
-handler.go              Connect-RPC request handlers
-workflow.go             DBOS workflow and operation executors
-e2e_test.go             End-to-end integration tests
-docker-compose.yml      Infrastructure services
-Taskfile.yml            Task runner commands
+antivirus/          ClamAV scanner integration
+gotenberg/          Gotenberg PDF conversion / merge
+docling/            Docling markdown extraction
+pdf2img/            PDF-to-image thumbnail generation
+config.go           Config + ConfigFromEnv()
+types.go            Public types, enums, request/response structs
+processor.go        NewProcessor constructor + public API methods + options
+validate.go         Input validation (bucket allowlist, DAG checks)
+workflow.go         DBOS workflow + operation executors
+caller.go           Caller identity context propagation
 ```
 
 ## Development
 
+### Prerequisites
+
+- [Go](https://go.dev) 1.25+
+- [Task](https://taskfile.dev) (task runner)
+- [mise](https://mise.jdx.dev) (tool management)
+- [Docker](https://docs.docker.com/get-docker/) (for backend services)
+
+### Setup
+
+```sh
+mise install
+task test
+```
+
 ### Available tasks
 
 ```sh
-task                # List all tasks
-task build          # Build binary to bin/fproc
-task run            # Run the server
-task test           # Run all tests
-task test:e2e       # Run e2e tests (requires infra)
-task generate       # Regenerate protobuf code
-task lint           # Lint protobuf definitions
-task vet            # Run go vet
-task tidy           # Tidy go modules
-task infra:up       # Start infrastructure via Tilt
-task infra:down     # Stop infrastructure and remove volumes
+task build          # go build ./...
+task vet            # go vet ./...
+task test           # go test -v -count=1 ./...
+task test:cover     # run tests with coverage summary
+task test:e2e       # run e2e tests (requires infra)
+task tidy           # go mod tidy
+task clean          # remove build artifacts and local data
+task infra:up       # start infrastructure via Tilt
+task infra:down     # stop infrastructure
 ```
 
 ### Running tests
 
-Unit tests run without any infrastructure:
+Unit tests run without infrastructure:
 
 ```sh
 task test
 ```
 
-End-to-end tests require the full Docker Compose stack:
+End-to-end tests require backend services:
 
 ```sh
 task infra:up
 task test:e2e
 ```
 
-The e2e tests exercise every RPC against real Gotenberg, Docling, and pdf2img services. ClamAV is optional — tests skip antivirus and verify the disabled-scan path instead.
-
-### Regenerating protobuf code
-
-```sh
-task generate
-```
-
-This runs `buf generate` and outputs Go + Connect code to `gen/`. Never edit files in `gen/` manually.
-
 ## Architecture
 
 ```
-                    +-----------+
-  Client ----RPC--->| Handler   |----> Standalone RPCs (ScanFile, ConvertToPDF, ...)
-                    +-----------+
-                         |
-                         v
-                    +-----------+
-                    | Processor |----> DBOS Workflow (Process RPC)
-                    +-----------+
-                    /    |    |   \
-                   v     v    v    v
-              Scanner  Gotenberg  Docling  pdf2img
-             (ClamAV)   (PDF)     (MD)     (JPEG)
-                   \     |    |    /
-                    v     v    v  v
-                    +------------+
-                    | ObjectStore|----> Local filesystem or S3
-                    +------------+
+                  +-----------+
+  Consumer ------>| Processor |----> Sync methods (ScanFile, ConvertToPDF, ...)
+                  +-----------+
+                       |
+                       v (optional)
+                  +-----------+
+                  |   DBOS    |----> Process workflow (async pipeline)
+                  +-----------+
+                  /    |    |   \
+                 v     v    v    v
+            Scanner  Gotenberg  Docling  pdf2img
+           (ClamAV)   (PDF)     (MD)     (JPEG)
+                 \     |    |    /
+                  v     v    v  v
+                  +------------+
+                  | ObjectStore|----> Local filesystem or S3
+                  +------------+
 ```
 
-Files are read from and written to the [ObjectStore](https://github.com/laenen-partners/objectstore) service. The `Process` RPC downloads inputs, runs operations sequentially as DBOS steps, and uploads results to the specified destinations.
+Files are read from and written to the [ObjectStore](https://github.com/laenen-partners/objectstore). The `Process` method downloads inputs, runs operations sequentially as DBOS steps, and uploads results to the specified destinations.
 
 ## License
 
