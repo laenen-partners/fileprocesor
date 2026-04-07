@@ -1,5 +1,7 @@
 package fileprocesor
 
+import "github.com/laenen-partners/fileprocesor/docling"
+
 // ImageFormat specifies the output image format for thumbnail generation.
 type ImageFormat string
 
@@ -104,6 +106,7 @@ type ExtractMarkdownRequest struct {
 type ExtractMarkdownResponse struct {
 	Markdown    string
 	HTML        string
+	Chunks      []docling.Chunk
 	DoclingJSON *FileRef
 }
 

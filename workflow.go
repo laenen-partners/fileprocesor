@@ -108,8 +108,9 @@ type ScanDetail struct {
 
 // MarkdownDetail contains markdown extraction results.
 type MarkdownDetail struct {
-	Markdown string `json:"markdown"`
-	HTML     string `json:"html"`
+	Markdown string          `json:"markdown"`
+	HTML     string          `json:"html"`
+	Chunks   []docling.Chunk `json:"chunks,omitempty"`
 }
 
 // ThumbnailDetail describes one page of a multi-page thumbnail result.
@@ -415,7 +416,7 @@ func (p *Processor) execMarkdown(ctx dbos.DBOSContext, op Operation, data map[st
 	}
 	return &OperationResult{
 		Success:  true,
-		MDDetail: &MarkdownDetail{Markdown: result.Markdown, HTML: result.HTML},
+		MDDetail: &MarkdownDetail{Markdown: result.Markdown, HTML: result.HTML, Chunks: result.Chunks},
 	}
 }
 

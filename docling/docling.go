@@ -21,6 +21,7 @@ type ConvertResult struct {
 	Markdown    string
 	HTML        string
 	DoclingJSON json.RawMessage
+	Chunks      []Chunk
 }
 
 // ImageExportMode controls how images appear in Docling's text output formats.
@@ -36,11 +37,28 @@ const (
 	ImageExportModeReferenced ImageExportMode = "referenced"
 )
 
+// ChunkerType selects the Docling chunking algorithm.
+type ChunkerType string
+
+const (
+	// ChunkerHybrid uses the hybrid chunker (default).
+	ChunkerHybrid ChunkerType = "hybrid"
+	// ChunkerHierarchical uses the hierarchical chunker.
+	ChunkerHierarchical ChunkerType = "hierarchical"
+)
+
 // ConvertOptions configures optional behaviour for a Convert call.
 type ConvertOptions struct {
 	// ImageExportMode controls how images appear in the markdown/HTML/JSON output.
 	// Defaults to ImageExportModePlaceholder when zero value.
 	ImageExportMode ImageExportMode
+
+	// Chunker selects the chunking algorithm. Defaults to ChunkerHybrid.
+	Chunker ChunkerType
+	// MaxTokens is the maximum number of tokens per chunk. Defaults to 1800.
+	MaxTokens int
+	// Overlap is the number of overlap tokens between consecutive chunks. Defaults to 200.
+	Overlap int
 }
 
 // Converter converts documents via Docling.
@@ -65,7 +83,23 @@ func New(baseURL string) *Client {
 // doclingResponse represents the JSON response from Docling's convert endpoint.
 type doclingResponse struct {
 	Document doclingOutputContent `json:"document"`
+	Chunks   []doclingChunk       `json:"chunks"`
 	Status   string               `json:"status"`
+}
+
+type doclingChunk struct {
+	Text  string          `json:"text"`
+	Meta  doclingChunkMeta `json:"meta"`
+}
+
+type doclingChunkMeta struct {
+	Headings []string       `json:"headings"`
+	Origin   *doclingOrigin `json:"origin"`
+}
+
+type doclingOrigin struct {
+	PageStart int `json:"page_start"`
+	PageEnd   int `json:"page_end"`
 }
 
 type doclingOutputContent struct {
@@ -103,6 +137,31 @@ func (c *Client) Convert(ctx context.Context, name string, data []byte, opts Con
 		return nil, fmt.Errorf("write image_export_mode: %w", err)
 	}
 
+	// Set chunking parameters.
+	chunker := opts.Chunker
+	if chunker == "" {
+		chunker = ChunkerHybrid
+	}
+	if err := w.WriteField("chunker", string(chunker)); err != nil {
+		return nil, fmt.Errorf("write chunker: %w", err)
+	}
+
+	maxTokens := opts.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = 1800
+	}
+	if err := w.WriteField("max_tokens", fmt.Sprintf("%d", maxTokens)); err != nil {
+		return nil, fmt.Errorf("write max_tokens: %w", err)
+	}
+
+	overlap := opts.Overlap
+	if overlap <= 0 {
+		overlap = 200
+	}
+	if err := w.WriteField("merge_peers", fmt.Sprintf("%d", overlap)); err != nil {
+		return nil, fmt.Errorf("write merge_peers: %w", err)
+	}
+
 	if err := w.Close(); err != nil {
 		return nil, fmt.Errorf("close multipart: %w", err)
 	}
@@ -137,11 +196,17 @@ func (c *Client) Convert(ctx context.Context, name string, data []byte, opts Con
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
+	chunks, err := parseChunks(dr.Chunks)
+	if err != nil {
+		return nil, fmt.Errorf("parse chunks: %w", err)
+	}
+
 	// The full response is the docling JSON we store in the file store.
 	return &ConvertResult{
 		Markdown:    dr.Document.Markdown,
 		HTML:        dr.Document.HTML,
 		DoclingJSON: respBody,
+		Chunks:      chunks,
 	}, nil
 }
 

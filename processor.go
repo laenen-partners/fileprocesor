@@ -424,6 +424,7 @@ func (p *Processor) ExtractMarkdown(ctx context.Context, req ExtractMarkdownRequ
 	resp := &ExtractMarkdownResponse{
 		Markdown: result.Markdown,
 		HTML:     result.HTML,
+		Chunks:   result.Chunks,
 	}
 	if dest := req.DoclingJSONDestination; dest != nil {
 		if err := p.uploadFile(ctx, dest.Bucket, dest.Key, "application/json", result.DoclingJSON); err != nil {
